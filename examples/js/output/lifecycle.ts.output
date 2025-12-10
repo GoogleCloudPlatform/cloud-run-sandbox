@@ -1,0 +1,32 @@
+CLOUD_RUN_URL=https://sandbox-12345.us-central1.run.app npx ts-node example/lifecycle.ts
+Connecting to sandbox at https://sandbox-12345.us-central1.run.app...
+[LifecycleExample] [DEBUG] Received cookie: GAESA=CpwBMDA2OWM3YTk4ODU1NTNiNmNiODYxOTgzZDQzNzdiYTYwYWI1ZGI4YzA1NGY5ZDU2Y2YxYTExYWYzZmFiMmRhMTNlMDM1ZTNmNWNhODQ5MDBhZWVkMWUzYTI1YzFkMDhhNWUwZmJkNTg3MGFhMWE4ZmNmMWVhOGIyNzc1ZWEyODIxMjdmMDI3OTU2MmEyM2RhZDEzNDM0NmY0NjkxEOnLxMehMw; expires=Mon, 24-Nov-2025 01:17:28 GMT; path=/
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_CREATING' }
+[LifecycleExample] [DEBUG] Received message: { event: 'sandbox_id', sandbox_id: 'sandbox-c1c8' }
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_RUNNING' }
+Sandbox created.
+Executing first process...
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_EXECUTION_RUNNING' }
+Process 1 started.
+Killing process 1...
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_EXECUTION_FORCE_KILLED' }
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_EXECUTION_DONE' }
+Process 1 killed.
+Process 1 finished.
+Executing second process...
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_EXECUTION_RUNNING' }
+Process 2 started.
+Killing process 2...
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_EXECUTION_FORCE_KILLED' }
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_EXECUTION_DONE' }
+Process 2 killed.
+Process 2 finished.
+Killing sandbox...
+[LifecycleExample] [DEBUG] Sending kill command to sandbox...
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_KILLING' }
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_DELETING' }
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_DELETED' }
+[LifecycleExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_KILLED' }
+[LifecycleExample] [DEBUG] Sandbox killed successfully.
+Sandbox killed.
+[LifecycleExample] [DEBUG] Connection closed: code=1000, reason=

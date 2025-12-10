@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@types/uuid": "^10.0.0",
+    "uuid": "^13.0.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "ts-node": "^10.9.2"
+  }
+}

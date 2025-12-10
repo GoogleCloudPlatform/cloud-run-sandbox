@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pytest
+pytest-asyncio
+httpx
+requests
+certifi
+google-cloud-storage

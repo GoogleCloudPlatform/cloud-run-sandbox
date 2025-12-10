@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info
+
+# Node
+node_modules/
+dist/
+
+# Examples
+example/**/*.js
+
+# Build artifacts
+out/

@@ -1,0 +1,72 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Cloud Run Sandbox CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install gVisor (runsc)
+      run: |
+        set -e
+        ARCH=$(uname -m)
+        URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
+        wget ${URL}/runsc ${URL}/runsc.sha512
+        sha512sum -c runsc.sha512
+        rm -f *.sha512
+        chmod a+rx runsc
+        sudo mv runsc /usr/local/bin
+        runsc --version
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -e ./clients/python
+
+    - name: Run Sandbox Tests
+      env:
+        RUNSC_IGNORE_CGROUPS: 'true'
+      run: |
+        sudo $(which python) -u -m pytest --log-cli-level=INFO -vv -s -rA tests/
+
+    - name: Run Python Client Tests
+      run: |
+        sudo $(which python) -u -m pytest -vv -s -rA clients/python/tests/
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install JS client dependencies
+      run: npm install --prefix clients/js
+
+    - name: Run Typescript Client Tests
+      run: npm test --prefix clients/js

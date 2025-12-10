@@ -1,0 +1,54 @@
+CLOUD_RUN_URL="wss://sandbox-timeout-123456.us-central1.run.app" npx ts-node example/reconnect.ts
+Connecting to sandbox at wss://sandbox-timeout-123456.us-central1.run.app...
+[ReconnectExample] [DEBUG] Received cookie: GAESA=CpwBMDA2OWM3YTk4ODEwMmQzOThmYTJhNWJmODRmMDRhZTFmZTI4ZjFlZmJmYTMzM2YyODVlZTFmMzUyMDY5MDIzZDc4YWMxMzhhNWUxMzViZGFhZTZiMzU4OGM3Y2M1ZjZjNzFlZDVjNDFiYzE1YjQ5NjUyNTBkYzZmODIwN2Q3MGE3ZmQzNWYzMDMyZDE5ODZjMmE5MTU0MGFlMDZkEIqktO-gMw; expires=Fri, 21-Nov-2025 21:57:11 GMT; path=/
+[ReconnectExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_CREATING' }
+[ReconnectExample] [DEBUG] Received message: { event: 'sandbox_id', sandbox_id: 'sandbox-01b9' }
+[ReconnectExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_RUNNING' }
+Successfully created sandbox with ID: sandbox-01b9
+
+Executing a long-running script to trigger the server's 5-second stream timeout...
+Observe the debug logs to see the reconnection happen automatically.
+
+--- Script Output (Iterative) ---
+Line 1
+Line 2
+Line 3
+Line 4
+Line 5
+[ReconnectExample] [DEBUG] Checking if should reconnect: code=1006, reason=, decision=true
+[ReconnectExample] [DEBUG] Using cookie for connection: GAESA=CpwBMDA2OWM3YTk4ODEwMmQzOThmYTJhNWJmODRmMDRhZTFmZTI4ZjFlZmJmYTMzM2YyODVlZTFmMzUyMDY5MDIzZDc4YWMxMzhhNWUxMzViZGFhZTZiMzU4OGM3Y2M1ZjZjNzFlZDVjNDFiYzE1YjQ5NjUyNTBkYzZmODIwN2Q3MGE3ZmQzNWYzMDMyZDE5ODZjMmE5MTU0MGFlMDZkEIqktO-gMw; expires=Fri, 21-Nov-2025 21:57:11 GMT; path=/
+[ReconnectExample] [DEBUG] Reconnected. Sending reconnect action.
+[ReconnectExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_RUNNING' }
+[ReconnectExample] [DEBUG] Flushing stdin buffer (0 messages).
+Line 6
+Line 7
+Line 8
+Line 9
+Line 10
+Line 11
+Line 12
+[ReconnectExample] [DEBUG] Checking if should reconnect: code=1006, reason=, decision=true
+[ReconnectExample] [DEBUG] Using cookie for connection: GAESA=CpwBMDA2OWM3YTk4ODEwMmQzOThmYTJhNWJmODRmMDRhZTFmZTI4ZjFlZmJmYTMzM2YyODVlZTFmMzUyMDY5MDIzZDc4YWMxMzhhNWUxMzViZGFhZTZiMzU4OGM3Y2M1ZjZjNzFlZDVjNDFiYzE1YjQ5NjUyNTBkYzZmODIwN2Q3MGE3ZmQzNWYzMDMyZDE5ODZjMmE5MTU0MGFlMDZkEIqktO-gMw; expires=Fri, 21-Nov-2025 21:57:11 GMT; path=/
+[ReconnectExample] [DEBUG] Reconnected. Sending reconnect action.
+[ReconnectExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_RUNNING' }
+[ReconnectExample] [DEBUG] Flushing stdin buffer (0 messages).
+Line 13
+Line 14
+Line 15
+Line 16
+Line 17
+Line 18
+[ReconnectExample] [DEBUG] Checking if should reconnect: code=1006, reason=, decision=true
+[ReconnectExample] [DEBUG] Using cookie for connection: GAESA=CpwBMDA2OWM3YTk4ODEwMmQzOThmYTJhNWJmODRmMDRhZTFmZTI4ZjFlZmJmYTMzM2YyODVlZTFmMzUyMDY5MDIzZDc4YWMxMzhhNWUxMzViZGFhZTZiMzU4OGM3Y2M1ZjZjNzFlZDVjNDFiYzE1YjQ5NjUyNTBkYzZmODIwN2Q3MGE3ZmQzNWYzMDMyZDE5ODZjMmE5MTU0MGFlMDZkEIqktO-gMw; expires=Fri, 21-Nov-2025 21:57:11 GMT; path=/
+[ReconnectExample] [DEBUG] Reconnected. Sending reconnect action.
+[ReconnectExample] [DEBUG] Received message: { event: 'status_update', status: 'SANDBOX_RUNNING' }
+[ReconnectExample] [DEBUG] Flushing stdin buffer (0 messages).
+Line 19
+Line 20
+---------------------------------
+
+Long-running script finished.
+
+Terminating sandbox...
+Sandbox terminated.
+[ReconnectExample] [DEBUG] Connection closed: code=1006, reason=

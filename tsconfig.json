@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "example/client_example.ts",
+    "clients/js/src/sandbox.ts",
+    "clients/js/src/process.ts",
+    "clients/js/src/types.ts"
+  ]
+}
