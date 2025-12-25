@@ -96,7 +96,7 @@ To enable this feature, the Cloud Run service must be deployed with a persistent
   - `SANDBOX_CHECKPOINT_MOUNT_PATH`
   - `SANDBOX_CHECKPOINT_BUCKET`
 
-Please see `docs/checkpoint_and_restore.md` for more details.
+Please see [Checkpoint and Restore](docs/checkpoint_and_restore.md) for more details.
 
 1.  **Create a GCS Bucket**: First, ensure you have a Google Cloud Storage bucket to store the checkpoints.
 2.  **Deploy with Volume Mount**: Deploy the service with the GCS bucket mounted as a volume.
@@ -152,7 +152,7 @@ The sandbox supports creating a filesystem snapshot from a running sandbox. This
 
 To enable this feature, the Cloud Run service must be deployed with a persistent volume and specific environment variables of `FILESYSTEM_SNAPSHOT_PATH` and `FILESYSTEM_SNAPSHOT_BUCKET`.
 
-Please see [Checkpoint and Restore](docs/filesystem_snapshot.md) for more details.
+Please see [Filesystem Snapshot](docs/filesystem_snapshot.md) for more details.
 
 1.  **Create a GCS Bucket**: First, ensure you have a Google Cloud Storage bucket to store the snapshots.
 2.  **Deploy with Volume Mount**: Deploy the service with the GCS bucket mounted as a volume.
