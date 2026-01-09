@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 *.egg-info
+venv/
 
 # Node
 node_modules/
@@ -12,3 +13,4 @@ example/**/*.js
 
 # Build artifacts
 out/
+build/
