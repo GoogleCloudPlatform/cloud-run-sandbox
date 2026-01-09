@@ -50,6 +50,7 @@ async def main():
         ssl=ssl_context,
         enable_debug=True,
         debug_label="LifecycleExample",
+        use_google_auth=True,
     )
 
     print("Sandbox created.")

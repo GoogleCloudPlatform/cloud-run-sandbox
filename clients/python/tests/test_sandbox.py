@@ -15,8 +15,10 @@
 
 import asyncio
 import json
+import logging
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+import google.auth.exceptions
 
 from sandbox.sandbox import Sandbox
 from sandbox.exceptions import SandboxCreationError, SandboxConnectionError, SandboxStateError, SandboxExecutionError, SandboxFilesystemSnapshotError, SandboxCheckpointError
@@ -1013,3 +1015,244 @@ async def test_sandbox_attach_provides_reconnect_callbacks(mock_Connection):
 
     await sandbox.kill(timeout=0.1)
 
+
+@pytest.mark.asyncio
+@patch('sandbox.sandbox.Connection')
+@patch('sandbox.sandbox.Sandbox._get_id_token')
+async def test_sandbox_create_google_auth_fetches_token(mock_get_id_token, mock_Connection):
+    """
+    Tests that Sandbox.create with use_google_auth=True calls _get_id_token
+    and passes the token to the Connection.
+    """
+    # Arrange
+    mock_get_id_token.return_value = "mock_id_token"
+    
+    mock_conn_instance = AsyncMock()
+    # Ensure connect() returns an awaitable that finishes immediately
+    mock_conn_instance.connect.return_value = None 
+    
+    captured_on_message = None
+
+    def connection_side_effect(*args, **kwargs):
+        nonlocal captured_on_message
+        captured_on_message = kwargs.get('on_message')
+        return mock_conn_instance
+    
+    mock_Connection.side_effect = connection_side_effect
+    
+    # Act
+    # Start the create task
+    create_task = asyncio.create_task(Sandbox.create("wss://example.com/sandbox", use_google_auth=True))
+    
+    # Yield control to allow Sandbox.create to run until it awaits connect() or internal logic
+    await asyncio.sleep(0)
+    await asyncio.sleep(0) # Yield again just to be safe
+
+    # Verify Connection was created and we captured the callback
+    assert captured_on_message is not None
+    
+    # Simulate the handshake success
+    captured_on_message(json.dumps({MessageKey.EVENT: EventType.SANDBOX_ID, MessageKey.SANDBOX_ID: "test_id", MessageKey.SANDBOX_TOKEN: "test_token"}))
+    await asyncio.sleep(0)
+    captured_on_message(json.dumps({MessageKey.EVENT: EventType.STATUS_UPDATE, MessageKey.STATUS: SandboxEvent.SANDBOX_RUNNING}))
+
+    # Now the create task should complete
+    sandbox = await create_task
+
+    # Assert
+    mock_get_id_token.assert_called_once_with("wss://example.com/sandbox")
+    
+    # Check that Connection was initialized with the token
+    _, kwargs = mock_Connection.call_args
+    assert kwargs['token'] == "mock_id_token"
+    
+    await sandbox.kill(timeout=0.1)
+
+@patch('sandbox.sandbox.google.auth.default')
+@patch('sandbox.sandbox.id_token.fetch_id_token')
+def test_get_id_token_adc(mock_fetch_id_token, mock_auth_default):
+    """
+    Tests _get_id_token using Application Default Credentials (ADC).
+    """
+    # Arrange
+    mock_creds = MagicMock()
+    mock_creds.id_token = "adc_id_token"
+    mock_auth_default.return_value = (mock_creds, "project_id")
+    
+    # Act
+    token = Sandbox._get_id_token("wss://service-123.run.app/sandbox")
+    
+    # Assert
+    assert token == "adc_id_token"
+    mock_creds.refresh.assert_called_once()
+    mock_fetch_id_token.assert_not_called()
+
+@patch('sandbox.sandbox.google.auth.default')
+@patch('sandbox.sandbox.id_token.fetch_id_token')
+def test_get_id_token_metadata_fallback(mock_fetch_id_token, mock_auth_default):
+    """
+    Tests _get_id_token falling back to fetch_id_token (metadata server)
+    when ADC fails or returns no token.
+    """
+    # Arrange
+    # Simulate ADC failure with the exact message from the library
+    msg = (
+        "Your default credentials were not found. To set up Application Default Credentials, "
+        "see https://cloud.google.com/docs/authentication/external/set-up-adc for more information."
+    )
+    mock_auth_default.side_effect = google.auth.exceptions.DefaultCredentialsError(msg)
+    mock_fetch_id_token.return_value = "metadata_id_token"
+    
+    # Act
+    token = Sandbox._get_id_token("wss://service-123.run.app/sandbox")
+    
+    # Assert
+    assert token == "metadata_id_token"
+    mock_fetch_id_token.assert_called_once()
+    
+    # Verify audience generation
+    # wss://service-123.run.app/sandbox -> https://service-123.run.app
+    _, kwargs = mock_fetch_id_token.call_args
+    assert kwargs['audience'] == "https://service-123.run.app"
+
+@patch('sandbox.sandbox.google.auth.default')
+@patch('sandbox.sandbox.id_token.fetch_id_token')
+def test_get_id_token_generic_exception_fallback(mock_fetch_id_token, mock_auth_default):
+    """
+    Tests _get_id_token falling back to fetch_id_token on any unexpected exception.
+    """
+    # Arrange
+    mock_auth_default.side_effect = RuntimeError("Something went wrong")
+    mock_fetch_id_token.return_value = "fallback_token"
+    
+    # Act
+    token = Sandbox._get_id_token("wss://service-123.run.app/sandbox")
+    
+    # Assert
+    assert token == "fallback_token"
+    mock_fetch_id_token.assert_called_once()
+
+@patch('sandbox.sandbox.google.auth.default')
+@patch('sandbox.sandbox.id_token.fetch_id_token')
+def test_get_id_token_audience_http(mock_fetch_id_token, mock_auth_default):
+    """
+    Tests _get_id_token audience generation for http/ws URLs (e.g. local testing).
+    """
+    # Arrange
+    mock_auth_default.side_effect = google.auth.exceptions.DefaultCredentialsError("No ADC")
+    mock_fetch_id_token.return_value = "token"
+    
+    # Act
+    Sandbox._get_id_token("ws://localhost:8080/sandbox")
+    
+    # Assert
+    _, kwargs = mock_fetch_id_token.call_args
+    assert kwargs['audience'] == "https://localhost:8080"
+
+@patch('sandbox.sandbox.google.auth.default')
+@patch('sandbox.sandbox.id_token.fetch_id_token')
+def test_get_id_token_audience_logging(mock_fetch_id_token, mock_auth_default, caplog):
+    """
+    Tests that the audience derivation logic is logged correctly.
+    """
+    # Arrange
+    caplog.set_level(logging.DEBUG)
+    mock_auth_default.side_effect = Exception("No ADC")
+    mock_fetch_id_token.return_value = "token"
+    
+    # Act
+    Sandbox._get_id_token("wss://example.com/sandbox")
+    
+    # Assert
+    assert "Derived OIDC audience https://example.com from connection URL wss://example.com/sandbox" in caplog.text
+
+@pytest.mark.asyncio
+@patch('sandbox.sandbox.Sandbox._get_id_token')
+async def test_reconnect_info_refreshes_token(mock_get_id_token):
+    """
+    Tests that _get_reconnect_info fetches a fresh token when use_google_auth is enabled.
+    """
+    # Arrange
+    sandbox = Sandbox("running")
+    sandbox._sandbox_id = "test_id"
+    sandbox._sandbox_token = "test_token"
+    sandbox._base_url = "https://example.com"
+    sandbox._use_google_auth = True
+    sandbox._connection = MagicMock()
+    sandbox._connection.ws_options = {"ssl": "mock_ssl"}
+    
+    mock_get_id_token.return_value = "fresh_token"
+    
+    # Act
+    reconnect_info = sandbox._get_reconnect_info()
+    
+    # Assert
+    assert reconnect_info['token'] == "fresh_token"
+    mock_get_id_token.assert_called_once_with("https://example.com")
+
+@pytest.mark.asyncio
+async def test_reconnect_info_does_not_refresh_token_if_not_auth():
+    """
+    Tests that _get_reconnect_info does NOT fetch a fresh token when use_google_auth is disabled.
+    """
+    # Arrange
+    sandbox = Sandbox("running")
+    sandbox._sandbox_id = "test_id"
+    sandbox._sandbox_token = "test_token"
+    sandbox._base_url = "https://example.com"
+    sandbox._use_google_auth = False
+    sandbox._connection = MagicMock()
+    sandbox._connection.ws_options = {"ssl": "mock_ssl"}
+    
+    # Act
+    with patch('sandbox.sandbox.Sandbox._get_id_token') as mock_get_id_token:
+        reconnect_info = sandbox._get_reconnect_info()
+        
+        # Assert
+        assert reconnect_info['token'] is None
+        mock_get_id_token.assert_not_called()
+
+def test_append_error_hint():
+    """Tests the _append_error_hint helper method directly."""
+    # 401 case
+    msg_401 = Sandbox._append_error_hint(Exception("HTTP 401 Unauthorized"))
+    assert "Hint: Permission denied or missing authentication" in msg_401
+    assert Sandbox._HINT_AUTH_PERMISSION in msg_401
+    assert Sandbox._TROUBLESHOOTING_URL in msg_401
+
+    # 403 case
+    msg_403 = Sandbox._append_error_hint(Exception("HTTP 403 Forbidden"))
+    assert "Hint: Permission denied or missing authentication" in msg_403
+    assert Sandbox._HINT_AUTH_PERMISSION in msg_403
+    assert Sandbox._TROUBLESHOOTING_URL in msg_403
+
+    # Generic HTTP error case
+    msg_500 = Sandbox._append_error_hint(Exception("HTTP 500 Internal Error"))
+    assert "Hint:" not in msg_500
+    assert "HTTP 500 Internal Error" in msg_500
+    assert Sandbox._TROUBLESHOOTING_URL in msg_500
+
+    # Non-HTTP error case
+    msg_value = Sandbox._append_error_hint(ValueError("Some other error"))
+    assert "Hint:" not in msg_value
+    assert Sandbox._TROUBLESHOOTING_URL not in msg_value
+
+@pytest.mark.asyncio
+@patch('sandbox.sandbox.Connection')
+async def test_sandbox_create_403_connection_error_includes_hint(mock_Connection):
+    """
+    Tests that Sandbox.create includes the auth hint when connection fails with 403.
+    """
+    # Arrange
+    mock_conn_instance = MagicMock()
+    # Connect raises the 403 error
+    mock_conn_instance.connect = AsyncMock(side_effect=Exception("server rejected WebSocket connection: HTTP 403"))
+    mock_Connection.return_value = mock_conn_instance
+    
+    # Act & Assert
+    with pytest.raises(SandboxConnectionError) as excinfo:
+        await Sandbox.create("ws://test")
+    
+    assert "HTTP 403" in str(excinfo.value)
+    assert "Hint: Permission denied or missing authentication" in str(excinfo.value)
+    assert Sandbox._HINT_AUTH_PERMISSION in str(excinfo.value)
