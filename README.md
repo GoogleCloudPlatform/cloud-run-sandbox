@@ -2,10 +2,6 @@
 
 This project provides a web server for executing arbitrary code (such as Python and Bash) in a secure sandboxed environment on Google Cloud Run. It leverages gVisor (`runsc`) for strong isolation and supports advanced features like stateful sessions through memory checkpoint/restore and efficient environment duplication via filesystem snapshots.
 
-> [!NOTE]
-> This project is developed with the assistance of the Gemini CLI, powered by the Gemini 2.5 Pro
-> to accelerate development for server & client side logics, testing, and documentations.
-
 ## 1. Deployment
 
 To deploy this service to Cloud Run, you will need to have the [`gcloud` CLI installed and authenticated](https://docs.cloud.google.com/sdk/docs/install-sdk).
