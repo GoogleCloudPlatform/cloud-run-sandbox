@@ -73,6 +73,7 @@ async function main() {
       enableSandboxHandoff: true,
       enableDebug: true,
       debugLabel: 'SandboxA',
+      useGoogleAuth: true,
     });
     const sandboxId = sandboxA.sandboxId;
     const sandboxToken = sandboxA.sandboxToken;
@@ -108,6 +109,7 @@ async function main() {
     sandboxB = await Sandbox.attach(urlB, sandboxId, sandboxToken, {
         enableDebug: true,
         debugLabel: 'SandboxB',
+        useGoogleAuth: true,
     });
     console.log(`[SandboxB] Successfully attached to sandbox ${sandboxB.sandboxId}. Handoff complete.`);
 

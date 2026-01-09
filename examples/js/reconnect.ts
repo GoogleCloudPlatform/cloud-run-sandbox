@@ -56,7 +56,7 @@ async function main() {
     // Create a new sandbox session with debug logging and auto-reconnect enabled.
     // The `enableDebug` and `debugLabel` options provide verbose logging for the connection
     // and sandbox lifecycle, which is useful for observing the reconnection and session affinity features.
-    sandbox = await Sandbox.create(url, { enableDebug: true, debugLabel: 'ReconnectExample', enableAutoReconnect: true });
+    sandbox = await Sandbox.create(url, { enableDebug: true, debugLabel: 'ReconnectExample', enableAutoReconnect: true, useGoogleAuth: true });
 
     console.log(`Successfully created sandbox with ID: ${sandbox.sandboxId}`);
     console.log("\nExecuting a long-running script to trigger the server's 5-second stream timeout...");

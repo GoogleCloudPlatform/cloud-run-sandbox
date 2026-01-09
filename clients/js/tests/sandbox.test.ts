@@ -19,9 +19,29 @@ import { Connection } from '../src/connection';
 import { EventEmitter } from 'events';
 import { jest } from '@jest/globals';
 import { MessageKey, EventType, SandboxEvent } from '../src/types';
+import { GoogleAuth } from 'google-auth-library';
 
 // Mock the Connection class
 jest.mock('../src/connection');
+
+// Mock google-auth-library
+jest.mock('google-auth-library', () => {
+  return {
+    GoogleAuth: jest.fn().mockImplementation(() => {
+      return {
+        getIdTokenClient: jest.fn().mockImplementation(() => {
+          return Promise.resolve({
+            getRequestHeaders: jest.fn().mockImplementation(() => {
+              return Promise.resolve({
+                Authorization: 'Bearer mock-token'
+              });
+            })
+          });
+        })
+      } as any;
+    })
+  };
+});
 
 const MockConnection = Connection as jest.MockedClass<typeof Connection>;
 
@@ -289,7 +309,7 @@ describe('Sandbox', () => {
     mockConnectionInstance.emit('open');
     mockConnectionInstance.emit('close');
 
-    await expect(createPromise).rejects.toThrow('Connection closed during creation/restoration: code=undefined');
+    await expect(createPromise).rejects.toThrow('Failed to connect to ws://test-url: Connection closed: undefined - No reason');
     expect(mockConnectionInstance.close).toHaveBeenCalled();
   });
 
@@ -608,7 +628,7 @@ describe('Sandbox', () => {
       const sandbox = await createPromise;
 
       const getReconnectInfo = MockConnection.mock.calls[0][2];
-      const info = getReconnectInfo();
+      const info = await getReconnectInfo();
 
       expect(info.url).toBe('ws://test-url/attach/test-id-reconnect?sandbox_token=test-token-reconnect');
       expect(info.wsOptions).toEqual({ headers: { 'X-Test': 'true' } });
@@ -843,5 +863,63 @@ describe('Sandbox', () => {
       expect(mockConnectionInstance.send).not.toHaveBeenCalled();
       expect(mockConnectionInstance.close).toHaveBeenCalled();
     });
+  });
+
+  describe('appendErrorHint', () => {
+    it('should append auth hint for 401/403 errors', () => {
+      const msg401 = (Sandbox as any).appendErrorHint('HTTP 401');
+      expect(msg401).toContain('Permission denied or missing authentication');
+      expect(msg401).toContain((Sandbox as any).HINT_AUTH_PERMISSION);
+
+      const msg403 = (Sandbox as any).appendErrorHint(new Error('HTTP 403 Forbidden'));
+      expect(msg403).toContain('Permission denied or missing authentication');
+      expect(msg403).toContain((Sandbox as any).HINT_AUTH_PERMISSION);
+    });
+
+    it('should append troubleshooting link for HTTP errors', () => {
+      const msg500 = (Sandbox as any).appendErrorHint('HTTP 500');
+      expect(msg500).toContain('https://docs.cloud.google.com/run/docs/troubleshooting');
+      expect(msg500).toContain((Sandbox as any).TROUBLESHOOTING_URL);
+    });
+
+    it('should not append hints for non-HTTP errors', () => {
+      const msg = (Sandbox as any).appendErrorHint('Some other error');
+      expect(msg).toBe('Some other error');
+    });
+  });
+
+  it('should use google auth when useGoogleAuth is true', async () => {
+    const createPromise = Sandbox.create('ws://test-url', { useGoogleAuth: true });
+    
+    // Give getIdToken a chance to resolve (not strictly needed with tokenProvider, but good for safety)
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(MockConnection).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Function),
+      expect.any(Function),
+      undefined,
+      false,
+      '',
+      expect.any(Function) // Expect tokenProvider function
+    );
+
+    // Verify the tokenProvider calls getIdToken
+    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+    await tokenProvider();
+    expect(GoogleAuth).toHaveBeenCalled();
+  });
+
+  it('should set state to attaching when using attach()', async () => {
+    const attachPromise = Sandbox.attach('ws://test-url', 'id', 'token');
+    // We can't easily check the internal state during the promise, but we can check if it initializes correctly.
+    // However, if we Mock Connection, we can check the instance passed to Sandbox constructor?
+    // Sandbox constructor is private.
+    
+    // Instead, let's verify that handleClose treats 'attaching' as a failure state if closed early.
+    mockConnectionInstance.emit('open');
+    mockConnectionInstance.emit('close');
+
+    await expect(attachPromise).rejects.toThrow('Failed to connect to ws://test-url: Connection closed: undefined - No reason');
   });
 });

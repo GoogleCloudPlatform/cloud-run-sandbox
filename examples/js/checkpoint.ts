@@ -71,6 +71,7 @@ async function main() {
       enableSandboxCheckpoint: true,
       enableDebug: true,
       debugLabel: 'SandboxA',
+      useGoogleAuth: true,
     });
     sandboxId = sandbox.sandboxId;
     sandboxToken = sandbox.sandboxToken;
@@ -97,6 +98,7 @@ async function main() {
     sandbox = await Sandbox.attach(urlRestore, sandboxId!, sandboxToken!, {
         enableDebug: true,
         debugLabel: 'SandboxB',
+        useGoogleAuth: true,
     });
     console.log("Successfully attached to the restored sandbox.");
 
