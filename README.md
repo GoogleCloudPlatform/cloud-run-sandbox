@@ -8,25 +8,26 @@ This project provides a web server for executing arbitrary code (such as Python 
 
 ## 1. Deployment
 
-To deploy this application to Cloud Run, you will need to have the `gcloud` CLI installed and authenticated. Then, run the following command from the root of the project directory.
+To deploy this service to Cloud Run, you will need to have the [`gcloud` CLI installed and authenticated](https://docs.cloud.google.com/sdk/docs/install-sdk).
 
-Concurrency is set to 1 for scaling up new sandboxes.
-
-Session-affinity is enabled to improve sandbox session affinity for the client.
+Then run the following command from any directoryt to deploy the pre-built container:
 
 ```bash
-gcloud run deploy sandbox --source . \
-  --project=<YOUR_PROJECT_ID> \
+gcloud run deploy sandbox \
+  --image=us-docker.pkg.dev/cloudrun/container/sandbox:latest \
   --region=us-central1 \
   --allow-unauthenticated \
   --execution-environment=gen2 \
   --cpu 8 \
   --memory 32Gi \
   --concurrency=1 \
-  --session-affinity
+  --session-affinity \
+  --project=<YOUR_PROJECT_ID>
 ```
 
 Replace `<YOUR_PROJECT_ID>` with your Google Cloud project ID.
+
+Alternatively, deploy the servcie from source by cloning this repository and running the `gcloud` command above by replacing `--image=us-docker.pkg.dev/cloudrun/container/sandbox:latest` with `--source=.`.
 
 ## 2. Using the Client Libraries
 
