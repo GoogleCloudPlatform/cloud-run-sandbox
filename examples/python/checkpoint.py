@@ -74,6 +74,7 @@ async def main():
             enable_debug=True,
             debug_label='SandboxA',
             ssl=ssl_context,
+            use_google_auth=True,
         )
         sandbox_id = sandbox.sandbox_id
         sandbox_token = sandbox.sandbox_token
@@ -101,6 +102,7 @@ async def main():
             enable_debug=True,
             debug_label='SandboxB',
             ssl=ssl_context,
+            use_google_auth=True,
         )
         print("Successfully attached to the restored sandbox.")
 
