@@ -58,7 +58,7 @@ async function main() {
   try {
     // 1. Create a new sandbox
     console.log("Creating a new sandbox...");
-    sandbox1 = await Sandbox.create(url);
+    sandbox1 = await Sandbox.create(url, { useGoogleAuth: true });
     console.log(`Successfully created sandbox with ID: ${sandbox1.sandboxId}`);
 
     // 2. Write a file to the sandbox's filesystem
@@ -77,7 +77,7 @@ async function main() {
 
     // 4. Create a new sandbox from the snapshot
     console.log(`\nCreating a new sandbox from snapshot ${snapshotName}...`);
-    sandbox2 = await Sandbox.create(url, { filesystemSnapshotName: snapshotName });
+    sandbox2 = await Sandbox.create(url, { filesystemSnapshotName: snapshotName, useGoogleAuth: true });
     console.log("Successfully created sandbox from snapshot.");
 
     // 5. Verify the state by reading the file
