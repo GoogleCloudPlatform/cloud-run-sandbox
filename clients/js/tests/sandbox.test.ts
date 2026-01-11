@@ -19,9 +19,29 @@ import { Connection } from '../src/connection';
 import { EventEmitter } from 'events';
 import { jest } from '@jest/globals';
 import { MessageKey, EventType, SandboxEvent } from '../src/types';
+import { GoogleAuth } from 'google-auth-library';
 
 // Mock the Connection class
 jest.mock('../src/connection');
+
+// Mock google-auth-library
+jest.mock('google-auth-library', () => {
+  return {
+    GoogleAuth: jest.fn().mockImplementation(() => {
+      return {
+        getIdTokenClient: jest.fn().mockImplementation(() => {
+          return Promise.resolve({
+            getRequestHeaders: jest.fn().mockImplementation(() => {
+              return Promise.resolve({
+                Authorization: 'Bearer mock-token'
+              });
+            })
+          });
+        })
+      } as any;
+    })
+  };
+});
 
 const MockConnection = Connection as jest.MockedClass<typeof Connection>;
 
@@ -37,6 +57,7 @@ describe('Sandbox', () => {
     // Make the constructor return our mock instance
     MockConnection.mockImplementation(() => mockConnectionInstance as any);
     MockConnection.mockClear();
+    (GoogleAuth as unknown as jest.Mock).mockClear();
   });
 
   it('should create and kill a sandbox successfully', async () => {
@@ -289,7 +310,7 @@ describe('Sandbox', () => {
     mockConnectionInstance.emit('open');
     mockConnectionInstance.emit('close');
 
-    await expect(createPromise).rejects.toThrow('Connection closed during creation/restoration: code=undefined');
+    await expect(createPromise).rejects.toThrow('Connection closed during creation/restoration: code=undefined, reason=No reason');
     expect(mockConnectionInstance.close).toHaveBeenCalled();
   });
 
@@ -305,6 +326,32 @@ describe('Sandbox', () => {
     
     mockConnectionInstance.emit('close');
     expect(mockConnectionInstance.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('should maintain failed state if connection closes after an error', async () => {
+    const createPromise = Sandbox.create('ws://test-url');
+    mockConnectionInstance.emit('open');
+    mockConnectionInstance.emit('message', JSON.stringify({
+      [MessageKey.EVENT]: EventType.SANDBOX_ID,
+      [MessageKey.SANDBOX_ID]: 'test-id',
+    }));
+    mockConnectionInstance.emit('message', JSON.stringify({
+      [MessageKey.EVENT]: EventType.STATUS_UPDATE,
+      [MessageKey.STATUS]: SandboxEvent.SANDBOX_RUNNING,
+    }));
+    const sandbox = await createPromise;
+
+    // Simulate an error that transitions to failed (e.g. during a state where we care)
+    (sandbox as any).state = 'restoring';
+    const error = new Error('Restore failed');
+    mockConnectionInstance.emit('error', error);
+    expect((sandbox as any).state).toBe('failed');
+
+    // Simulate subsequent close
+    mockConnectionInstance.emit('close');
+    
+    // State should STILL be failed, not closed
+    expect((sandbox as any).state).toBe('failed');
   });
 
   it('should run a process, wait for output, and run another process', async () => {
@@ -608,7 +655,7 @@ describe('Sandbox', () => {
       const sandbox = await createPromise;
 
       const getReconnectInfo = MockConnection.mock.calls[0][2];
-      const info = getReconnectInfo();
+      const info = await getReconnectInfo();
 
       expect(info.url).toBe('ws://test-url/attach/test-id-reconnect?sandbox_token=test-token-reconnect');
       expect(info.wsOptions).toEqual({ headers: { 'X-Test': 'true' } });
@@ -843,5 +890,116 @@ describe('Sandbox', () => {
       expect(mockConnectionInstance.send).not.toHaveBeenCalled();
       expect(mockConnectionInstance.close).toHaveBeenCalled();
     });
+  });
+
+  describe('appendErrorHint', () => {
+    it('should append auth hint for 401/403 errors', () => {
+      const msg401 = (Sandbox as any).appendErrorHint('HTTP 401');
+      expect(msg401).toContain('Permission denied or missing authentication');
+      expect(msg401).toContain((Sandbox as any).HINT_AUTH_PERMISSION);
+
+      const msg403 = (Sandbox as any).appendErrorHint(new Error('HTTP 403 Forbidden'));
+      expect(msg403).toContain('Permission denied or missing authentication');
+      expect(msg403).toContain((Sandbox as any).HINT_AUTH_PERMISSION);
+    });
+
+    it('should append troubleshooting link for HTTP errors', () => {
+      const msg500 = (Sandbox as any).appendErrorHint('HTTP 500');
+      expect(msg500).toContain('https://docs.cloud.google.com/run/docs/troubleshooting');
+      expect(msg500).toContain((Sandbox as any).TROUBLESHOOTING_URL);
+    });
+
+    it('should not append hints for non-HTTP errors', () => {
+      const msg = (Sandbox as any).appendErrorHint('Some other error');
+      expect(msg).toBe('Some other error');
+    });
+  });
+
+  it('should use google auth when useGoogleAuth is true', async () => {
+    const createPromise = Sandbox.create('ws://test-url', { useGoogleAuth: true });
+    
+    // Give getIdToken a chance to resolve (not strictly needed with tokenProvider, but good for safety)
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(MockConnection).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Function),
+      expect.any(Function),
+      undefined,
+      false,
+      '',
+      expect.any(Function) // Expect tokenProvider function
+    );
+
+    // Verify the tokenProvider calls getIdToken
+    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+    await tokenProvider();
+    expect(GoogleAuth).toHaveBeenCalled();
+  });
+
+  it('should derive correct audience from URL', async () => {
+    // Test with WSS URL to ensure it is rewritten to HTTPS for audience
+    const createPromise = Sandbox.create('wss://my-service-xyz.run.app/subpath', { useGoogleAuth: true });
+    
+    // Trigger the token provider
+    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+    await tokenProvider();
+
+    // Verify audience is the HTTPS origin
+    const mockAuthInstance = (GoogleAuth as unknown as jest.Mock).mock.results[0].value as any;
+    expect(mockAuthInstance.getIdTokenClient).toHaveBeenCalledWith('https://my-service-xyz.run.app');
+  });
+
+  it('should fetch a fresh token on every connection attempt', async () => {
+    let callCount = 0;
+    // Override the mock for this test
+    (GoogleAuth as unknown as jest.Mock).mockImplementation(() => ({
+      getIdTokenClient: jest.fn<any>().mockResolvedValue({
+        getRequestHeaders: jest.fn<any>().mockResolvedValue({
+          Authorization: `Bearer token-${++callCount}`
+        })
+      })
+    }));
+
+    const createPromise = Sandbox.create('ws://test-url', { useGoogleAuth: true });
+    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+
+    const token1 = await tokenProvider();
+    const token2 = await tokenProvider();
+
+    expect(token1).toBe('token-1');
+    expect(token2).toBe('token-2');
+  });
+
+  it('should emit failed event if an error occurs during reconnection', async () => {
+    const createPromise = Sandbox.create('ws://test-url', { enableAutoReconnect: true });
+    mockConnectionInstance.emit('open');
+    mockConnectionInstance.emit('message', JSON.stringify({
+      [MessageKey.EVENT]: EventType.SANDBOX_ID,
+      [MessageKey.SANDBOX_ID]: 'test-id',
+    }));
+    mockConnectionInstance.emit('message', JSON.stringify({
+      [MessageKey.EVENT]: EventType.STATUS_UPDATE,
+      [MessageKey.STATUS]: SandboxEvent.SANDBOX_RUNNING,
+    }));
+    const sandbox = await createPromise;
+
+    // Force state to reconnecting
+    (sandbox as any).state = 'reconnecting';
+    
+    const failedPromise = new Promise<void>((resolve) => {
+      (sandbox as any).eventEmitter.on('failed', (err: Error) => {
+        expect(err.message).toContain('Token fetch failed');
+        resolve();
+      });
+    });
+
+    // Simulate error (e.g. from token provider or connection failure)
+    const error = new Error('Token fetch failed');
+    mockConnectionInstance.emit('error', error);
+
+    await failedPromise;
+    
+    expect((sandbox as any).state).toBe('failed');
   });
 });

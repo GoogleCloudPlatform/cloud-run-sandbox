@@ -48,7 +48,8 @@ async function main() {
       enableSandboxCheckpoint: true,
       enableDebug: true,
       debugLabel: 'ShellSandbox',
-      enableAutoReconnect: true 
+      enableAutoReconnect: true,
+      useGoogleAuth: true
     });
     console.log(`Connected to sandbox: ${sandbox.sandboxId}`);
     console.log("Starting interactive shell... (type 'exit' to quit)");

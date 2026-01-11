@@ -49,7 +49,8 @@ async function main() {
     );
     
     sandbox = await Promise.race([
-      Sandbox.create(url),
+      // Set `useGoogleAuth: true` to automatically fetch an ID token from Application Default Credentials.
+      Sandbox.create(url, { useGoogleAuth: true }),
       timeoutPromise
     ]);
 
