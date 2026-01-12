@@ -32,7 +32,6 @@ export type ReconnectInfo = {
 
 export type GetReconnectInfoCallback = () => ReconnectInfo;
 
-
 /**
  * A WebSocket connection wrapper that provides automatic reconnection capabilities.
  * It emits standard WebSocket events (`open`, `message`, `close`, `error`) and an additional `reopen` event
@@ -48,6 +47,7 @@ export class Connection extends EventEmitter {
   private cookie: string | null = null;
   private _debugEnabled: boolean = false;
   private _debugLabel: string = '';
+  private tokenProvider?: () => Promise<string>;
 
   /**
    * A flag to indicate if the connection was closed intentionally by the user calling `close()`.
@@ -69,6 +69,7 @@ export class Connection extends EventEmitter {
     wsOptions?: WebSocket.ClientOptions,
     debug: boolean = false,
     debugLabel: string = '',
+    tokenProvider?: () => Promise<string>,
   ) {
     super();
     this.url = url;
@@ -77,6 +78,7 @@ export class Connection extends EventEmitter {
     this.wsOptions = wsOptions;
     this._debugEnabled = debug;
     this._debugLabel = debugLabel;
+    this.tokenProvider = tokenProvider;
     this.connect();
   }
 
@@ -84,19 +86,42 @@ export class Connection extends EventEmitter {
    * Establishes the WebSocket connection and sets up event listeners.
    * This method is called initially and for every reconnection attempt.
    */
-  private connect() {
-    if (this.cookie) {
-      if (this._debugEnabled) {
-        console.log(`[${this._debugLabel}] [DEBUG] Using cookie for connection:`, this.cookie);
+  private async connect() {
+    let headers: Record<string, string> | undefined = this.wsOptions?.headers as any;
+    
+    let token: string | undefined;
+    if (this.tokenProvider) {
+      try {
+        token = await this.tokenProvider();
+      } catch (e) {
+        this.emit('error', e);
+        return;
       }
+    }
+
+    if (this.cookie || token) {
+      headers = { ...headers };
+      if (this.cookie) {
+        if (this._debugEnabled) {
+          console.log(`[${this._debugLabel}] [DEBUG] Using cookie for connection:`, this.cookie);
+        }
+        headers['Cookie'] = this.cookie;
+      }
+      if (token) {
+        if (this._debugEnabled) {
+          console.log(`[${this._debugLabel}] [DEBUG] Using authentication token.`);
+        }
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    if (headers) {
       this.wsOptions = {
         ...this.wsOptions,
-        headers: {
-          ...this.wsOptions?.headers,
-          Cookie: this.cookie,
-        },
+        headers,
       };
     }
+
     this.ws = new WebSocket(this.url, this.wsOptions);
 
     this.ws.on('upgrade', (response) => {

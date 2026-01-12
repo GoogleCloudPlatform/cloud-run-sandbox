@@ -39,6 +39,7 @@ async function main() {
   const sandbox = await Sandbox.create(WEBSOCKET_URL, {
     enableDebug: true,
     debugLabel: 'LifecycleExample',
+    useGoogleAuth: true,
   });
 
   console.log('Sandbox created.');

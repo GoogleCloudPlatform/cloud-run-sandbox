@@ -19,6 +19,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "google-auth-library": "^9.15.0",
     "ws": "^8.18.3"
   }
 }

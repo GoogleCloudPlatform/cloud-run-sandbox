@@ -16,6 +16,7 @@
 
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
+import { GoogleAuth } from 'google-auth-library';
 import { MessageKey, EventType, SandboxEvent, WebSocketMessage } from './types';
 import { SandboxProcess } from './process';
 import { Connection, ShouldReconnectCallback, ReconnectInfo } from './connection';
@@ -38,13 +39,18 @@ export class Sandbox {
   private _isKillIntentionally = false;
   private _url: string = '';
   private _wsOptions?: WebSocket.ClientOptions;
+  private _useGoogleAuth: boolean = false;
   private stdinBuffer: string[] = [];
 
-  private constructor(connection: Connection, debug: boolean = false, debugLabel: string = '', autoReconnectEnabled: boolean = false) {
+  private static readonly HINT_AUTH_PERMISSION = " (Hint: Permission denied or missing authentication. Ensure you have enabled 'useGoogleAuth: true' in the Sandbox.create/attach options, and that your account has the 'Cloud Run Invoker' (roles/run.invoker) role on this service.)";
+  private static readonly TROUBLESHOOTING_URL = "https://docs.cloud.google.com/run/docs/troubleshooting";
+
+  private constructor(connection: Connection, debug: boolean = false, debugLabel: string = '', autoReconnectEnabled: boolean = false, useGoogleAuth: boolean = false) {
     this.connection = connection;
     this._debugEnabled = debug;
     this._debugLabel = debugLabel;
     this._autoReconnectEnabled = autoReconnectEnabled;
+    this._useGoogleAuth = useGoogleAuth;
     this.connection.on('message', this.handleMessage.bind(this));
     this.connection.on('close', this.handleClose.bind(this));
     this.connection.on('error', this.handleError.bind(this));
@@ -63,6 +69,32 @@ export class Sandbox {
     if (this._debugEnabled) {
       console.log(`[${this._debugLabel}] [DEBUG] ${message}`, ...args);
     }
+  }
+
+  private static appendErrorHint(error: any): string {
+    let msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('401') || msg.includes('403')) {
+      msg += this.HINT_AUTH_PERMISSION;
+    }
+    if (msg.includes('HTTP')) {
+      msg += ` For more troubleshooting steps, see: ${this.TROUBLESHOOTING_URL}`;
+    }
+    return msg;
+  }
+
+  private static async getIdToken(url: string): Promise<string> {
+    const auth = new GoogleAuth();
+    // Always use https protocol for audience generation, as Cloud Run OIDC audiences are HTTPS.
+    const urlObj = new URL(url);
+    urlObj.protocol = 'https:';
+    const audience = urlObj.origin;
+    const client = await auth.getIdTokenClient(audience);
+    const clientHeaders = await client.getRequestHeaders();
+    const authHeader = clientHeaders['Authorization'];
+    if (typeof authHeader === 'string') {
+      return authHeader.replace('Bearer ', '');
+    }
+    throw new Error('Could not fetch ID token.');
   }
 
   private _updateShouldReconnect(status: SandboxEvent) {
@@ -185,12 +217,15 @@ export class Sandbox {
   }
 
   private handleClose(code: number, reason: Buffer) {
-    this.logDebugMessage(`Connection closed: code=${code}, reason=${reason ? reason.toString() : 'No reason'}`);
-    if (this.state === 'creating' || this.state === 'restoring') {
+    const reasonStr = reason ? reason.toString() : 'No reason';
+    this.logDebugMessage(`Connection closed: code=${code}, reason=${reasonStr}`);
+    
+    if (this.state === 'creating' || this.state === 'restoring' || this.state === 'reconnecting') {
       this.state = 'failed';
-      const err = new Error(`Connection closed during creation/restoration: code=${code}`);
-      this.eventEmitter.emit('failed', err);
-    } else {
+      const err = new Error(`Connection closed during creation/restoration: code=${code}, reason=${reasonStr}`);
+      const enhancedMsg = Sandbox.appendErrorHint(err);
+      this.eventEmitter.emit('failed', new Error(enhancedMsg));
+    } else if (this.state !== 'failed') {
       this.state = 'closed';
     }
     
@@ -201,20 +236,21 @@ export class Sandbox {
   }
 
   private handleError(err: Error) {
+    const enhancedMsg = Sandbox.appendErrorHint(err);
+    const enhancedError = new Error(enhancedMsg);
+
     if (this._debugEnabled) {
-      console.error(`[${this._debugLabel}] [DEBUG] WebSocket error:`, err);
+      console.error(`[${this._debugLabel}] [DEBUG] WebSocket error:`, enhancedError);
     }
-    if (this.state === 'creating' || this.state === 'restoring') {
+    if (this.state === 'creating' || this.state === 'restoring' || this.state === 'reconnecting') {
       this.state = 'failed';
-      this.eventEmitter.emit('failed', err);
+      this.eventEmitter.emit('failed', enhancedError);
     }
     
     if (this.activeProcess) {
       this.activeProcess.close();
       this.activeProcess = null;
     }
-    // In the 'running' state, you might want to emit a general error
-    // for the user to handle, e.g., this.eventEmitter.emit('error', err);
   }
 
   private handleReopen() {
@@ -240,8 +276,13 @@ export class Sandbox {
     return { url: reconnectUrl, wsOptions: this._wsOptions };
   }
 
-  static create(url: string, options: { idleTimeout?: number, enableSandboxCheckpoint?: boolean, enableSandboxHandoff?: boolean, filesystemSnapshotName?: string, enableDebug?: boolean, debugLabel?: string, wsOptions?: WebSocket.ClientOptions, enableAutoReconnect?: boolean, enableIdleTimeoutAutoCheckpoint?: boolean } = {}): Promise<Sandbox> {
-    const { idleTimeout = 60, enableSandboxCheckpoint = false, enableSandboxHandoff = false, filesystemSnapshotName, enableDebug = false, debugLabel = '', wsOptions, enableAutoReconnect = false, enableIdleTimeoutAutoCheckpoint = false } = options;
+  static async create(url: string, options: { idleTimeout?: number, enableSandboxCheckpoint?: boolean, enableSandboxHandoff?: boolean, filesystemSnapshotName?: string, enableDebug?: boolean, debugLabel?: string, wsOptions?: WebSocket.ClientOptions, enableAutoReconnect?: boolean, enableIdleTimeoutAutoCheckpoint?: boolean, useGoogleAuth?: boolean } = {}): Promise<Sandbox> {
+    const { idleTimeout = 60, enableSandboxCheckpoint = false, enableSandboxHandoff = false, filesystemSnapshotName, enableDebug = false, debugLabel = '', wsOptions, enableAutoReconnect = false, enableIdleTimeoutAutoCheckpoint = false, useGoogleAuth = false } = options;
+    let tokenProvider: (() => Promise<string>) | undefined;
+
+    if (useGoogleAuth) {
+      tokenProvider = () => this.getIdToken(url);
+    }
     
     const sanitizedUrl = url.replace(/\/$/, '');
     let sandbox: Sandbox;
@@ -252,8 +293,9 @@ export class Sandbox {
       wsOptions,
       enableDebug,
       debugLabel,
+      tokenProvider,
     );
-    sandbox = new Sandbox(connection, enableDebug, debugLabel, enableAutoReconnect);
+    sandbox = new Sandbox(connection, enableDebug, debugLabel, enableAutoReconnect, useGoogleAuth);
     sandbox._url = url;
     sandbox._wsOptions = wsOptions;
 
@@ -280,8 +322,13 @@ export class Sandbox {
     });
   }
 
-  static attach(url: string, sandboxId: string, sandboxToken: string, options: { enableDebug?: boolean, debugLabel?: string, wsOptions?: WebSocket.ClientOptions, enableAutoReconnect?: boolean } = {}): Promise<Sandbox> {
-    const { enableDebug = false, debugLabel = '', wsOptions, enableAutoReconnect = false } = options;
+  static async attach(url: string, sandboxId: string, sandboxToken: string, options: { enableDebug?: boolean, debugLabel?: string, wsOptions?: WebSocket.ClientOptions, enableAutoReconnect?: boolean, useGoogleAuth?: boolean } = {}): Promise<Sandbox> {
+    const { enableDebug = false, debugLabel = '', wsOptions, enableAutoReconnect = false, useGoogleAuth = false } = options;
+    let tokenProvider: (() => Promise<string>) | undefined;
+
+    if (useGoogleAuth) {
+      tokenProvider = () => this.getIdToken(url);
+    }
     
     const sanitizedUrl = url.replace(/\/$/, '');
     let sandbox: Sandbox;
@@ -292,8 +339,9 @@ export class Sandbox {
       wsOptions,
       enableDebug,
       debugLabel,
+      tokenProvider,
     );
-    sandbox = new Sandbox(connection, enableDebug, debugLabel, enableAutoReconnect);
+    sandbox = new Sandbox(connection, enableDebug, debugLabel, enableAutoReconnect, useGoogleAuth);
     sandbox._url = url;
     sandbox._wsOptions = wsOptions;
     sandbox._sandboxId = sandboxId;
