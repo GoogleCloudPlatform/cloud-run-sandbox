@@ -1,9 +1,12 @@
 {
-  "name": "js",
+  "name": "cloud-run-sandbox",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "jest"
