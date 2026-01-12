@@ -15,8 +15,15 @@
 
 import asyncio
 import json
+import logging
 import weakref
 import websockets
+from urllib.parse import urlparse
+
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
+import google.auth
+import google.auth.exceptions
 
 from .types import MessageKey, EventType, SandboxEvent
 from .exceptions import SandboxConnectionError, SandboxCreationError, SandboxStateError, SandboxFilesystemSnapshotError, SandboxCheckpointError
@@ -27,6 +34,9 @@ class Sandbox:
     """
     Represents a connection to a Cloud Run Sandbox, used to execute commands.
     """
+    _HINT_AUTH_PERMISSION = " (Hint: Permission denied or missing authentication. Ensure you have enabled 'use_google_auth=True' in the Sandbox.create/attach options, and that your account has the 'Cloud Run Invoker' (roles/run.invoker) role on this service.)"
+    _TROUBLESHOOTING_URL = "https://docs.cloud.google.com/run/docs/troubleshooting"
+
     def __init__(self, initial_state: str, enable_debug=False, debug_label=""):
         self._connection = None
         self._sandbox_id = None
@@ -47,6 +57,7 @@ class Sandbox:
         self._enable_auto_reconnect = False
         self._should_reconnect_internal = False
         self._base_url = None
+        self._use_google_auth = False
 
     @property
     def sandbox_id(self):
@@ -58,8 +69,45 @@ class Sandbox:
         """The token for the sandbox."""
         return self._sandbox_token
 
+    @staticmethod
+    def _get_id_token(url: str):
+        logger = logging.getLogger(__name__)
+        parsed_url = urlparse(url)
+        audience = f"https://{parsed_url.netloc}"
+        logger.debug(f"Derived OIDC audience {audience} from connection URL {url}")
+        auth_req = Request()
+
+        # 1. Try to use google.auth.default() to handle User Credentials (ADC)
+        try:
+            creds, _ = google.auth.default()
+            if creds:
+                creds.refresh(auth_req)
+                # User Credentials (from gcloud auth application-default login) have an id_token attribute.
+                if hasattr(creds, 'id_token') and creds.id_token:
+                    return creds.id_token
+        except google.auth.exceptions.DefaultCredentialsError:
+            # Fallback to fetch_id_token
+            pass
+        except Exception:
+            # For any other errors, also fallback
+            pass
+
+        # 2. Use fetch_id_token for Metadata Server and Service Account files
+        # This handles generating ID tokens with the specific audience.
+        return id_token.fetch_id_token(auth_req, audience=audience)
+
     @classmethod
-    async def create(cls, url: str, idle_timeout: int = 60, ssl=None, enable_debug=False, debug_label="", filesystem_snapshot_name: str = None, enable_sandbox_checkpoint: bool = False, enable_idle_timeout_auto_checkpoint: bool = False, enable_auto_reconnect: bool = False, enable_sandbox_handoff: bool = False):
+    def _append_error_hint(cls, error: Exception) -> str:
+        msg = str(error)
+        if "401" in msg or "403" in msg:
+            msg += cls._HINT_AUTH_PERMISSION
+        
+        if "HTTP" in msg:
+             msg += f" For more troubleshooting steps, see: {cls._TROUBLESHOOTING_URL}"
+        return msg
+
+    @classmethod
+    async def create(cls, url: str, idle_timeout: int = 60, ssl=None, enable_debug=False, debug_label="", filesystem_snapshot_name: str = None, enable_sandbox_checkpoint: bool = False, enable_idle_timeout_auto_checkpoint: bool = False, enable_auto_reconnect: bool = False, enable_sandbox_handoff: bool = False, use_google_auth: bool = False):
         """
         Creates a new sandbox session.
         """
@@ -67,7 +115,12 @@ class Sandbox:
         instance._enable_auto_reconnect = enable_auto_reconnect
         sanitized_url = url.rstrip('/')
         instance._base_url = sanitized_url
+        instance._use_google_auth = use_google_auth
         ws_url = f"{sanitized_url}/create"
+        
+        token = None
+        if use_google_auth:
+            token = cls._get_id_token(url)
         
         ws_options = {"ssl": ssl} if ssl else {}
 
@@ -83,10 +136,12 @@ class Sandbox:
                 ws_options=ws_options,
                 debug=enable_debug,
                 debug_label=debug_label,
+                token=token,
             )
             await instance._connection.connect()
         except Exception as e:
-            raise SandboxConnectionError(f"Failed to connect to {ws_url}: {e}")
+            msg = cls._append_error_hint(e)
+            raise SandboxConnectionError(f"Failed to connect to {ws_url}: {msg}")
 
         create_params = {"idle_timeout": idle_timeout}
         if filesystem_snapshot_name:
@@ -103,7 +158,7 @@ class Sandbox:
         return instance
 
     @classmethod
-    async def attach(cls, url: str, sandbox_id: str, sandbox_token: str, ssl=None, enable_debug=False, debug_label="", enable_auto_reconnect: bool = False):
+    async def attach(cls, url: str, sandbox_id: str, sandbox_token: str, ssl=None, enable_debug=False, debug_label="", enable_auto_reconnect: bool = False, use_google_auth: bool = False):
         """
         Attaches to an existing sandbox session.
         """
@@ -111,9 +166,14 @@ class Sandbox:
         instance._enable_auto_reconnect = enable_auto_reconnect
         instance._sandbox_id = sandbox_id
         instance._sandbox_token = sandbox_token
+        instance._use_google_auth = use_google_auth
         sanitized_url = url.rstrip('/')
         instance._base_url = sanitized_url
         ws_url = f"{sanitized_url}/attach/{sandbox_id}?sandbox_token={sandbox_token}"
+
+        token = None
+        if use_google_auth:
+            token = cls._get_id_token(url)
 
         ws_options = {"ssl": ssl} if ssl else {}
 
@@ -129,10 +189,12 @@ class Sandbox:
                 ws_options=ws_options,
                 debug=enable_debug,
                 debug_label=debug_label,
+                token=token,
             )
             await instance._connection.connect()
         except Exception as e:
-            raise SandboxConnectionError(f"Failed to connect to {ws_url}: {e}")
+            msg = cls._append_error_hint(e)
+            raise SandboxConnectionError(f"Failed to connect to {ws_url}: {msg}")
 
         await instance._wait_for_ready()
         return instance
@@ -255,7 +317,13 @@ class Sandbox:
     def _get_reconnect_info(self):
         base_url = self._base_url
         reconnect_url = f"{base_url}/attach/{self._sandbox_id}?sandbox_token={self._sandbox_token}"
-        return {"url": reconnect_url, "ws_options": self._connection.ws_options}
+        
+        token = None
+        if self._use_google_auth:
+            # Refresh the ID token for the reconnection attempt
+            token = self._get_id_token(base_url)
+            
+        return {"url": reconnect_url, "ws_options": self._connection.ws_options, "token": token}
 
     async def _on_reopen(self):
         self._log_debug("Reconnected. Sending reconnect action.")

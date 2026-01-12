@@ -52,6 +52,7 @@ async def run_handoff(url_a: str, url_b: str):
             enable_debug=True,
             debug_label="SandboxA",
             ssl=ssl_context,
+            use_google_auth=True,
         )
         sandbox_id = sandbox_a.sandbox_id
         sandbox_token = sandbox_a.sandbox_token
@@ -77,6 +78,7 @@ async def run_handoff(url_a: str, url_b: str):
             enable_debug=True,
             debug_label="SandboxB",
             ssl=ssl_context,
+            use_google_auth=True,
         )
         print(f"[SandboxB] Successfully attached to sandbox {sandbox_b.sandbox_id}. Handoff complete.")
 

@@ -60,7 +60,7 @@ async def main():
     try:
         # 1. Create a new sandbox
         print("Creating a new sandbox...")
-        sandbox1 = await Sandbox.create(url, ssl=ssl_context)
+        sandbox1 = await Sandbox.create(url, ssl=ssl_context, use_google_auth=True)
         print(f"Successfully created sandbox with ID: {sandbox1.sandbox_id}")
 
         # 2. Write a file to the sandbox's filesystem
@@ -79,7 +79,7 @@ async def main():
 
         # 4. Create a new sandbox from the snapshot
         print(f"\nCreating a new sandbox from snapshot {snapshot_name}...")
-        sandbox2 = await Sandbox.create(url, filesystem_snapshot_name=snapshot_name, ssl=ssl_context)
+        sandbox2 = await Sandbox.create(url, filesystem_snapshot_name=snapshot_name, ssl=ssl_context, use_google_auth=True)
         print("Successfully created sandbox from snapshot.")
 
         # 5. Verify the state by reading the file

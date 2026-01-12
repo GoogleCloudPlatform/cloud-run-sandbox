@@ -28,6 +28,7 @@ class Connection:
         ws_options: Optional[Dict[str, Any]] = None,
         debug: bool = False,
         debug_label: str = '',
+        token: Optional[str] = None,
     ):
         self.url = url
         self.on_message = on_message
@@ -44,6 +45,7 @@ class Connection:
         self.is_closed_intentionally = False
         self.is_reconnecting = False
         self.cookie: Optional[str] = None
+        self.token = token
 
     def _log_debug(self, message, *args):
         if self._debug_enabled:
@@ -61,6 +63,10 @@ class Connection:
         if self.cookie:
             self._log_debug(f"Using existing cookie for session affinity: {self.cookie}")
             headers['Cookie'] = self.cookie
+        
+        if self.token:
+            self._log_debug("Using provided authentication token.")
+            headers['Authorization'] = f"Bearer {self.token}"
 
         ws = await websockets.connect(
             url,
@@ -136,6 +142,7 @@ class Connection:
         reconnect_info = self.get_reconnect_info()
         self.url = reconnect_info['url']
         self.ws_options = reconnect_info.get('ws_options', self.ws_options)
+        self.token = reconnect_info.get('token', self.token)
         self._log_debug(f"Reonnecting to {self.url}")
         self.ws = await self._establish_connection(self.url, self.ws_options)
         self.is_reconnecting = False

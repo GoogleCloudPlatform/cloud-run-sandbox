@@ -64,7 +64,8 @@ async def main():
             ssl=ssl_context,
             enable_debug=True,
             debug_label='ReconnectExample',
-            enable_auto_reconnect=True
+            enable_auto_reconnect=True,
+            use_google_auth=True,
         )
 
         print(f"Successfully created sandbox with ID: {sandbox.sandbox_id}")
