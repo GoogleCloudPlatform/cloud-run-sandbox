@@ -2,24 +2,19 @@
   "name": "cloud-run-sandbox",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.js",
+  "type": "module",
   "files": [
-    "dist"
+    "src"
   ],
   "scripts": {
-    "build": "tsc",
-    "test": "jest"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/ws": "^8.18.1",
-    "jest": "^30.1.3",
-    "ts-jest": "^29.4.1",
-    "typescript": "^5.9.2"
+    "jest": "^30.1.3"
   },
   "dependencies": {
     "google-auth-library": "^9.15.0",

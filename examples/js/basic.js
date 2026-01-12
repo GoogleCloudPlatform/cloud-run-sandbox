@@ -15,7 +15,7 @@
  */
 
 /*
- * A simple example demonstrating how to use the Cloud Run Sandbox TypeScript client. 
+ * A simple example demonstrating how to use the Cloud Run Sandbox JavaScript client. 
  * 
  * This script expects the URL of your deployed Cloud Run service to be
  * set in the `CLOUD_RUN_URL` environment variable.
@@ -23,13 +23,12 @@
  * The WebSocket URL should be in the format: wss://<your-cloud-run-url>
  * 
  * To run this example:
- * 1. Make sure you have ts-node installed (`npm install -g ts-node`).
- * 2. Set the environment variable:
+ * 1. Set the environment variable:
  *    `export CLOUD_RUN_URL="wss://your-service-url.run.app"
- * 3. Run the script from the root of the repository:
- *    `npx ts-node examples/js/basic.ts`
+ * 2. Run the script from the root of the repository:
+ *    `node examples/js/basic.js`
  */
-import { Sandbox } from '../../clients/js/src/sandbox';
+import { Sandbox } from '../../clients/js/src/sandbox.js';
 
 async function main() {
   const url = process.env.CLOUD_RUN_URL;
@@ -40,11 +39,11 @@ async function main() {
   }
 
   console.log(`Connecting to sandbox at ${url}...`);
-  let sandbox: Sandbox | undefined;
+  let sandbox;
 
   try {
     // Create a new sandbox session, with a 10-second timeout.
-    const timeoutPromise = new Promise<Sandbox>((_, reject) => 
+    const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Connection timed out after 10 seconds')), 10000)
     );
     

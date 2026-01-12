@@ -36,14 +36,13 @@
  * The WebSocket URLs should be in the format: wss://<your-cloud-run-url>
  *
  * To run this example:
- * 1. Make sure you have ts-node installed (`npm install -g ts-node`).
- * 2. Set the environment variables:
+ * 1. Set the environment variables:
  *    `export CLOUD_RUN_URL_CHECKPOINT="wss://your-service-a-url.run.app"`
  *    `export CLOUD_RUN_URL_RESTORE="wss://your-service-b-url.run.app"`
- * 3. Run the script from the root of the repository:
- *    `npx ts-node example/js/checkpoint.ts`
+ * 2. Run the script from the root of the repository:
+ *    `node examples/js/checkpoint.js`
  */
-import { Sandbox } from '../../clients/js/src/sandbox';
+import { Sandbox } from '../../clients/js/src/sandbox.js';
 
 async function main() {
   const urlCheckpoint = process.env.CLOUD_RUN_URL_CHECKPOINT;
@@ -60,9 +59,9 @@ async function main() {
   console.log(`Using Checkpoint URL: ${urlCheckpoint}`);
   console.log(`Using Restore URL: ${urlRestore}`);
 
-  let sandbox: Sandbox | null = null;
-  let sandboxId: string | null = null;
-  let sandboxToken: string | null = null;
+  let sandbox = null;
+  let sandboxId = null;
+  let sandboxToken = null;
 
   try {
     // 1. Create a new sandbox
@@ -95,7 +94,7 @@ async function main() {
 
     // 4. Attach to the checkpointed sandbox
     console.log(`\nAttaching to sandbox ${sandboxId}...`);
-    sandbox = await Sandbox.attach(urlRestore, sandboxId!, sandboxToken!, {
+    sandbox = await Sandbox.attach(urlRestore, sandboxId, sandboxToken, {
         enableDebug: true,
         debugLabel: 'SandboxB',
         useGoogleAuth: true,

@@ -17,61 +17,87 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { GoogleAuth } from 'google-auth-library';
-import { MessageKey, EventType, SandboxEvent, WebSocketMessage } from './types';
-import { SandboxProcess } from './process';
-import { Connection, ShouldReconnectCallback, ReconnectInfo } from './connection';
+import { MessageKey, EventType, SandboxEvent } from './types.js';
+import { SandboxProcess } from './process.js';
+import { Connection } from './connection.js';
 
-type SandboxState = 'creating' | 'running' | 'closed' | 'failed' | 'checkpointing' | 'checkpointed' | 'restoring' | 'filesystem_snapshotting' | 'reconnecting';
+/**
+ * @typedef {'creating' | 'running' | 'closed' | 'failed' | 'checkpointing' | 'checkpointed' | 'restoring' | 'filesystem_snapshotting' | 'reconnecting'} SandboxState
+ */
 
 export class Sandbox {
-  private connection: Connection;
-  private eventEmitter = new EventEmitter();
-  private _sandboxId: string | null = null;
-  private _sandboxToken: string | null = null;
-  private _creationError: Error | null = null;
-  private activeProcess: SandboxProcess | null = null;
-  private state: SandboxState = 'creating';
-  private _debugEnabled: boolean = false;
-  private _debugLabel: string = '';
-  private _shouldReconnect: boolean = false;
-  private _autoReconnectEnabled: boolean = false;
-  private _isCheckpointIntentionally: boolean = false;
-  private _isKillIntentionally = false;
-  private _url: string = '';
-  private _wsOptions?: WebSocket.ClientOptions;
-  private _useGoogleAuth: boolean = false;
-  private stdinBuffer: string[] = [];
+  static get HINT_AUTH_PERMISSION() {
+    return " (Hint: Permission denied or missing authentication. Ensure you have enabled 'useGoogleAuth: true' in the Sandbox.create/attach options, and that your account has the 'Cloud Run Invoker' (roles/run.invoker) role on this service.)";
+  }
 
-  private static readonly HINT_AUTH_PERMISSION = " (Hint: Permission denied or missing authentication. Ensure you have enabled 'useGoogleAuth: true' in the Sandbox.create/attach options, and that your account has the 'Cloud Run Invoker' (roles/run.invoker) role on this service.)";
-  private static readonly TROUBLESHOOTING_URL = "https://docs.cloud.google.com/run/docs/troubleshooting";
+  static get TROUBLESHOOTING_URL() {
+    return "https://docs.cloud.google.com/run/docs/troubleshooting";
+  }
 
-  private constructor(connection: Connection, debug: boolean = false, debugLabel: string = '', autoReconnectEnabled: boolean = false, useGoogleAuth: boolean = false) {
+  /**
+   * @param {Connection} connection
+   * @param {boolean} [debug]
+   * @param {string} [debugLabel]
+   * @param {boolean} [autoReconnectEnabled]
+   * @param {boolean} [useGoogleAuth]
+   */
+  constructor(connection, debug = false, debugLabel = '', autoReconnectEnabled = false, useGoogleAuth = false) {
     this.connection = connection;
+    this.eventEmitter = new EventEmitter();
+    this._sandboxId = null;
+    this._sandboxToken = null;
+    this._creationError = null;
+    /** @type {SandboxProcess | null} */
+    this.activeProcess = null;
+    /** @type {SandboxState} */
+    this.state = 'creating';
     this._debugEnabled = debug;
     this._debugLabel = debugLabel;
+    this._shouldReconnect = false;
     this._autoReconnectEnabled = autoReconnectEnabled;
+    this._isCheckpointIntentionally = false;
+    this._isKillIntentionally = false;
+    this._url = '';
+    this._wsOptions = undefined;
     this._useGoogleAuth = useGoogleAuth;
+    /** @type {string[]} */
+    this.stdinBuffer = [];
+
     this.connection.on('message', this.handleMessage.bind(this));
     this.connection.on('close', this.handleClose.bind(this));
     this.connection.on('error', this.handleError.bind(this));
     this.connection.on('reopen', this.handleReopen.bind(this));
   }
 
-  public get sandboxId(): string | null {
+  /**
+   * @returns {string | null}
+   */
+  get sandboxId() {
     return this._sandboxId;
   }
 
-  public get sandboxToken(): string | null {
+  /**
+   * @returns {string | null}
+   */
+  get sandboxToken() {
     return this._sandboxToken;
   }
 
-  private logDebugMessage(message: string, ...args: any[]) {
+  /**
+   * @param {string} message
+   * @param {...any} args
+   */
+  logDebugMessage(message, ...args) {
     if (this._debugEnabled) {
       console.log(`[${this._debugLabel}] [DEBUG] ${message}`, ...args);
     }
   }
 
-  private static appendErrorHint(error: any): string {
+  /**
+   * @param {any} error
+   * @returns {string}
+   */
+  static appendErrorHint(error) {
     let msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('401') || msg.includes('403')) {
       msg += this.HINT_AUTH_PERMISSION;
@@ -82,7 +108,11 @@ export class Sandbox {
     return msg;
   }
 
-  private static async getIdToken(url: string): Promise<string> {
+  /**
+   * @param {string} url
+   * @returns {Promise<string>}
+   */
+  static async getIdToken(url) {
     const auth = new GoogleAuth();
     // Always use https protocol for audience generation, as Cloud Run OIDC audiences are HTTPS.
     const urlObj = new URL(url);
@@ -97,7 +127,10 @@ export class Sandbox {
     throw new Error('Could not fetch ID token.');
   }
 
-  private _updateShouldReconnect(status: SandboxEvent) {
+  /**
+   * @param {string} status
+   */
+  _updateShouldReconnect(status) {
     const isFatalError = [
       SandboxEvent.SANDBOX_ERROR,
       SandboxEvent.SANDBOX_NOT_FOUND,
@@ -116,8 +149,12 @@ export class Sandbox {
     }
   }
 
-  private handleMessage(data: WebSocket.Data) {
-    const message: WebSocketMessage = JSON.parse(data.toString());
+  /**
+   * @param {import('ws').Data} data
+   */
+  handleMessage(data) {
+    /** @type {import('./types.js').WebSocketMessage} */
+    const message = JSON.parse(data.toString());
 
     if (message.event != EventType.STDOUT && message.event != EventType.STDERR) {
       this.logDebugMessage('Received message:', message);
@@ -128,8 +165,11 @@ export class Sandbox {
       message.event === EventType.STDOUT ||
       message.event === EventType.STDERR ||
       (message.event === EventType.STATUS_UPDATE &&
+        // @ts-ignore
         message.status &&
+        // @ts-ignore
         message.status.startsWith('SANDBOX_EXECUTION_') &&
+        // @ts-ignore
         message.status !== SandboxEvent.SANDBOX_EXECUTION_IN_PROGRESS_ERROR)
     ) {
       if (this.activeProcess) {
@@ -140,14 +180,18 @@ export class Sandbox {
 
     // Handle sandbox lifecycle events
     if (message.event === EventType.SANDBOX_ID) {
+      // @ts-ignore
       this._sandboxId = message.sandbox_id;
+      // @ts-ignore
       this._sandboxToken = message.sandbox_token ?? null;
       return;
     }
 
     if (message.event === EventType.STATUS_UPDATE) {
+      // @ts-ignore
       this._updateShouldReconnect(message.status);
 
+      // @ts-ignore
       switch (message.status) {
         case SandboxEvent.SANDBOX_RUNNING:
           if (this.state === 'reconnecting') {
@@ -159,12 +203,14 @@ export class Sandbox {
         case SandboxEvent.SANDBOX_CREATION_ERROR:
           if (this.state === 'creating') {
             this.state = 'failed';
+            // @ts-ignore
             this._creationError = new Error(message.message || message.status);
             this.eventEmitter.emit('failed', this._creationError);
           }
           break;
         case SandboxEvent.SANDBOX_PERMISSION_DENIAL_ERROR:
           this.state = 'failed';
+          // @ts-ignore
           this._creationError = new Error(message.message || message.status);
           this.eventEmitter.emit('failed', this._creationError);
           break;
@@ -177,10 +223,12 @@ export class Sandbox {
           break;
         case SandboxEvent.SANDBOX_CHECKPOINT_ERROR:
           this.state = 'failed'; // This is a fatal error for the session.
+          // @ts-ignore
           this.eventEmitter.emit('checkpoint_error', new Error(message.message || message.status));
           break;
         case SandboxEvent.SANDBOX_EXECUTION_IN_PROGRESS_ERROR:
           this.state = 'running'; // Checkpoint failed, back to running
+          // @ts-ignore
           this.eventEmitter.emit('checkpoint_error', new Error(message.message || message.status));
           break;
         case SandboxEvent.SANDBOX_RESTORING:
@@ -188,11 +236,13 @@ export class Sandbox {
           break;
         case SandboxEvent.SANDBOX_RESTORE_ERROR:
           this.state = 'failed';
+          // @ts-ignore
           this._creationError = new Error(message.message || message.status);
           this.eventEmitter.emit('failed', this._creationError);
           break;
         case SandboxEvent.SANDBOX_NOT_FOUND:
           this.state = 'failed';
+          // @ts-ignore
           this._creationError = new Error(message.message || message.status);
           this.eventEmitter.emit('failed', this._creationError);
           break;
@@ -205,6 +255,7 @@ export class Sandbox {
           break;
         case SandboxEvent.SANDBOX_FILESYSTEM_SNAPSHOT_ERROR:
           this.state = 'running';
+          // @ts-ignore
           this.eventEmitter.emit('filesystem_snapshot_error', new Error(message.message || message.status));
           break;
         case SandboxEvent.SANDBOX_KILLED:
@@ -216,7 +267,11 @@ export class Sandbox {
     }
   }
 
-  private handleClose(code: number, reason: Buffer) {
+  /**
+   * @param {number} code
+   * @param {Buffer} reason
+   */
+  handleClose(code, reason) {
     const reasonStr = reason ? reason.toString() : 'No reason';
     this.logDebugMessage(`Connection closed: code=${code}, reason=${reasonStr}`);
     
@@ -235,7 +290,10 @@ export class Sandbox {
     }
   }
 
-  private handleError(err: Error) {
+  /**
+   * @param {Error} err
+   */
+  handleError(err) {
     const enhancedMsg = Sandbox.appendErrorHint(err);
     const enhancedError = new Error(enhancedMsg);
 
@@ -253,12 +311,17 @@ export class Sandbox {
     }
   }
 
-  private handleReopen() {
+  handleReopen() {
     this.logDebugMessage('Reconnected. Sending reconnect action.');
     this.connection.send(JSON.stringify({ action: 'reconnect' }));
   }
 
-  public shouldReconnect(code: number, reason: Buffer): boolean {
+  /**
+   * @param {number} code
+   * @param {Buffer} reason
+   * @returns {boolean}
+   */
+  shouldReconnect(code, reason) {
     const decision = this._shouldReconnect && !this._isCheckpointIntentionally;
     this.logDebugMessage(`Checking if should reconnect: code=${code}, reason=${reason.toString()}, decision=${decision}`);
     if (decision) {
@@ -267,7 +330,10 @@ export class Sandbox {
     return decision;
   }
 
-  private getReconnectInfo(): ReconnectInfo {
+  /**
+   * @returns {import('./connection.js').ReconnectInfo}
+   */
+  getReconnectInfo() {
     if (!this._sandboxId) {
       throw new Error('Cannot reconnect without a sandbox ID.');
     }
@@ -276,16 +342,21 @@ export class Sandbox {
     return { url: reconnectUrl, wsOptions: this._wsOptions };
   }
 
-  static async create(url: string, options: { idleTimeout?: number, enableSandboxCheckpoint?: boolean, enableSandboxHandoff?: boolean, filesystemSnapshotName?: string, enableDebug?: boolean, debugLabel?: string, wsOptions?: WebSocket.ClientOptions, enableAutoReconnect?: boolean, enableIdleTimeoutAutoCheckpoint?: boolean, useGoogleAuth?: boolean } = {}): Promise<Sandbox> {
+  /**
+   * @param {string} url
+   * @param {{ idleTimeout?: number, enableSandboxCheckpoint?: boolean, enableSandboxHandoff?: boolean, filesystemSnapshotName?: string, enableDebug?: boolean, debugLabel?: string, wsOptions?: import('ws').ClientOptions, enableAutoReconnect?: boolean, enableIdleTimeoutAutoCheckpoint?: boolean, useGoogleAuth?: boolean }} [options]
+   * @returns {Promise<Sandbox>}
+   */
+  static async create(url, options = {}) {
     const { idleTimeout = 60, enableSandboxCheckpoint = false, enableSandboxHandoff = false, filesystemSnapshotName, enableDebug = false, debugLabel = '', wsOptions, enableAutoReconnect = false, enableIdleTimeoutAutoCheckpoint = false, useGoogleAuth = false } = options;
-    let tokenProvider: (() => Promise<string>) | undefined;
+    let tokenProvider;
 
     if (useGoogleAuth) {
       tokenProvider = () => this.getIdToken(url);
     }
     
     const sanitizedUrl = url.replace(/\/$/, '');
-    let sandbox: Sandbox;
+    let sandbox;
     const connection = new Connection(
       `${sanitizedUrl}/create`,
       (code, reason) => sandbox.shouldReconnect(code, reason),
@@ -322,16 +393,23 @@ export class Sandbox {
     });
   }
 
-  static async attach(url: string, sandboxId: string, sandboxToken: string, options: { enableDebug?: boolean, debugLabel?: string, wsOptions?: WebSocket.ClientOptions, enableAutoReconnect?: boolean, useGoogleAuth?: boolean } = {}): Promise<Sandbox> {
+  /**
+   * @param {string} url
+   * @param {string} sandboxId
+   * @param {string} sandboxToken
+   * @param {{ enableDebug?: boolean, debugLabel?: string, wsOptions?: import('ws').ClientOptions, enableAutoReconnect?: boolean, useGoogleAuth?: boolean }} [options]
+   * @returns {Promise<Sandbox>}
+   */
+  static async attach(url, sandboxId, sandboxToken, options = {}) {
     const { enableDebug = false, debugLabel = '', wsOptions, enableAutoReconnect = false, useGoogleAuth = false } = options;
-    let tokenProvider: (() => Promise<string>) | undefined;
+    let tokenProvider;
 
     if (useGoogleAuth) {
       tokenProvider = () => this.getIdToken(url);
     }
     
     const sanitizedUrl = url.replace(/\/$/, '');
-    let sandbox: Sandbox;
+    let sandbox;
     const connection = new Connection(
       `${sanitizedUrl}/attach/${sandboxId}?sandbox_token=${sandboxToken}`,
       (code, reason) => sandbox.shouldReconnect(code, reason),
@@ -360,7 +438,10 @@ export class Sandbox {
     });
   }
 
-  public checkpoint(): Promise<void> {
+  /**
+   * @returns {Promise<void>}
+   */
+  checkpoint() {
     if (this.state !== 'running') {
       return Promise.reject(new Error(`Sandbox is not in a running state. Current state: ${this.state}`));
     }
@@ -377,7 +458,11 @@ export class Sandbox {
     });
   }
 
-  public snapshotFilesystem(name: string): Promise<void> {
+  /**
+   * @param {string} name
+   * @returns {Promise<void>}
+   */
+  snapshotFilesystem(name) {
     if (this.state !== 'running') {
       return Promise.reject(new Error(`Sandbox is not in a running state. Current state: ${this.state}`));
     }
@@ -394,7 +479,7 @@ export class Sandbox {
     });
   }
 
-  private flushStdinBuffer() {
+  flushStdinBuffer() {
     this.logDebugMessage(`Flushing stdin buffer (${this.stdinBuffer.length} messages).`);
     for (const data of this.stdinBuffer) {
       this.connection.send(data);
@@ -402,7 +487,10 @@ export class Sandbox {
     this.stdinBuffer = [];
   }
 
-  private sendMessage(data: string) {
+  /**
+   * @param {string} data
+   */
+  sendMessage(data) {
     if (this.state === 'reconnecting') {
       try {
         const message = JSON.parse(data);
@@ -419,7 +507,12 @@ export class Sandbox {
     this.connection.send(data);
   }
 
-  public async exec(language: string, code: string): Promise<SandboxProcess> {
+  /**
+   * @param {string} language
+   * @param {string} code
+   * @returns {Promise<SandboxProcess>}
+   */
+  async exec(language, code) {
     if (this.activeProcess) {
       throw new Error('Another process is already running in this sandbox.');
     }
@@ -432,7 +525,7 @@ export class Sandbox {
     );
     this.activeProcess = process;
     
-    process['eventEmitter'].once('done', () => {
+    process.eventEmitter.once('done', () => {
       this.activeProcess = null;
     });
 
@@ -440,7 +533,10 @@ export class Sandbox {
     return process;
   }
 
-  public kill(): Promise<void> {
+  /**
+   * @returns {Promise<void>}
+   */
+  kill() {
     if (this.state === 'closed' || this.state === 'failed' || this.state === 'checkpointed') {
       this.connection.close();
       return Promise.resolve();

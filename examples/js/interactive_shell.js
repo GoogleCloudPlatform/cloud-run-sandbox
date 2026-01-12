@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Copyright 2025 Google LLC
  *
@@ -25,15 +24,12 @@
  * line-buffered, so features like tab-completion will not work.
  *
  * To run this example:
- * 1. Make sure you have ts-node installed (`npm install -g ts-node`).
- * 2. Set the environment variable:
+ * 1. Set the environment variable:
  *    `export CLOUD_RUN_URL="wss://your-service-url.run.app"
- * 3. Install the JS client for the sandbox:
- *    `npm install clients/js/`
- * 4. Run the script from the root of the repository:
- *    `ts-node example/interactive_shell.ts`
+ * 2. Run the script from the root of the repository:
+ *    `node examples/js/interactive_shell.js`
  */
-import { Sandbox } from '../../clients/js/src/sandbox';
+import { Sandbox } from '../../clients/js/src/sandbox.js';
 
 async function main() {
   const url = process.env.CLOUD_RUN_URL;
@@ -42,7 +38,7 @@ async function main() {
     return;
   }
 
-  let sandbox: Sandbox | undefined;
+  let sandbox;
   try {
     sandbox = await Sandbox.create(url, {
       enableSandboxCheckpoint: true,
