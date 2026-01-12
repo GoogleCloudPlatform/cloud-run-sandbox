@@ -46,7 +46,7 @@ async def main():
 
     try:
         # Create a new sandbox session
-        # Set `authenticated=True` to automatically fetch an ID token from Application Default Credentials.
+        # Set `use_google_auth=True` to automatically fetch an ID token from Application Default Credentials.
         sandbox = await Sandbox.create(url, ssl=ssl_context, enable_debug=True, debug_label="client_example", use_google_auth=True)
         print(f"Successfully created sandbox with ID: {sandbox.sandbox_id}")
 

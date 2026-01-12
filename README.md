@@ -47,12 +47,12 @@ Then, you can install it in your project (e.g., `npm install clients/js/`).
 Here is a simple example of how to connect to the sandbox, execute a command, and print its output:
 
 ```typescript
-import { Sandbox } from 'js';
+import { Sandbox } from 'cloud-run-sandbox';
 
 // Replace `https` with `wss` of the Cloud Run service URL.
 const url = "wss://<YOUR_SERVICE_URL>";
-// Set `authenticated: true` to automatically fetch an ID token from Application Default Credentials.
-const sandbox = await Sandbox.create(url, { authenticated: true });
+// Set `useGoogleAuth: true` to automatically fetch an ID token from Application Default Credentials.
+const sandbox = await Sandbox.create(url, { useGoogleAuth: true });
 
 // Execute a command
 const process = await sandbox.exec('bash', "echo 'Hello from the sandbox!'");
@@ -81,9 +81,9 @@ Then, you can run the following script:
 
 ```python
 # Create a sandbox
-# Set `authenticated=True` to automatically fetch an ID token from Application Default Credentials.
+# Set `use_google_auth=True` to automatically fetch an ID token from Application Default Credentials.
 # Note: For local development, run `gcloud auth application-default login` first.
-sandbox = await Sandbox.create(url, authenticated=True) 
+sandbox = await Sandbox.create(url, use_google_auth=True) 
 
 # Execute a command
 process = await sandbox.exec('bash', "echo 'Hello from the sandbox!'")
