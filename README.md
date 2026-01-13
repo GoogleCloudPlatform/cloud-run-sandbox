@@ -12,7 +12,7 @@ Then run the following command from any directoryt to deploy the pre-built conta
 gcloud run deploy sandbox \
   --image=us-docker.pkg.dev/cloudrun/container/sandbox:latest \
   --region=us-central1 \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --execution-environment=gen2 \
   --cpu 8 \
   --memory 32Gi \
@@ -29,18 +29,30 @@ Alternatively, deploy the servcie from source by cloning this repository and run
 
 The most convenient way to interact with the sandbox is by using one of the client libraries.
 
-For each of these examples, ensure you first install the respective client in the clients/ folder. For example, `npm install clients/js/` for Typescript.
+For each of these examples, ensure you first install the respective client in the clients/ folder.
 
 ### TypeScript
+
+To use the TypeScript client, you must first build it:
+
+```bash
+cd clients/js
+npm install
+npm run build
+cd ../..
+```
+
+Then, you can install it in your project (e.g., `npm install clients/js/`).
 
 Here is a simple example of how to connect to the sandbox, execute a command, and print its output:
 
 ```typescript
-import { Sandbox } from './clients/js/src/sandbox';
+import { Sandbox } from 'cloud-run-sandbox';
 
 // Replace `https` with `wss` of the Cloud Run service URL.
 const url = "wss://<YOUR_SERVICE_URL>";
-const sandbox = await Sandbox.create(url);
+// Set `useGoogleAuth: true` to automatically fetch an ID token from Application Default Credentials.
+const sandbox = await Sandbox.create(url, { useGoogleAuth: true });
 
 // Execute a command
 const process = await sandbox.exec('bash', "echo 'Hello from the sandbox!'");
@@ -61,22 +73,20 @@ Here is a simple example of how to connect to the sandbox, execute a command, an
 
 To install the Python client, run the following command from the root of the repository:
 
+```bash
+pip install clients/python/
+```
+
+Then, you can run the following script:
+
 ```python
 # Create a sandbox
-sandbox = await Sandbox.create(url, ssl=ssl_context) 
+# Set `use_google_auth=True` to automatically fetch an ID token from Application Default Credentials.
+# Note: For local development, run `gcloud auth application-default login` first.
+sandbox = await Sandbox.create(url, use_google_auth=True) 
 
 # Execute a command
 process = await sandbox.exec('bash', "echo 'Hello from the sandbox!'")
-
-# Read the output
-output = await process.stdout.read_all()
-print(output)
-
-# Wait for the process to finish
-await process.wait()
-
-# Clean up the sandbox session
-await sandbox.kill()
 ```
 
 For a more detailed example, please see `examples/python/basic.py`.
@@ -107,7 +117,7 @@ BUCKET_NAME=<YOUR_BUCKET_NAME>
 gcloud run deploy sandbox --source . \
   --project=${PROJECT_ID} \
   --region=us-central1 \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --execution-environment=gen2 \
   --cpu 8 \
   --memory 32Gi \
@@ -163,7 +173,7 @@ BUCKET_NAME=<YOUR_BUCKET_NAME>
 gcloud run deploy sandbox --source . \
   --project=${PROJECT_ID} \
   --region=us-central1 \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --execution-environment=gen2 \
   --cpu 8 \
   --memory 32Gi \
@@ -203,13 +213,13 @@ query parameter.
 For example, to execute the `test_hello.py` script in `examples` directory:
 
 ```bash
-curl -s -X POST -H "Content-Type: text/plain" --data-binary @examples/test_hello.py https://<YOUR_SERVICE_URL>/execute?language=python
+curl -s -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" -H "Content-Type: text/plain" --data-binary @examples/test_hello.py https://<YOUR_SERVICE_URL>/execute?language=python
 ```
 
 For bash scripts,
 
 ```bash
-curl -s -X POST -H "Content-Type: text/plain" --data "echo 'hello from bash'" https://<YOUR_SERVICE_URL>/execute?language=bash
+curl -s -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" -H "Content-Type: text/plain" --data "echo 'hello from bash'" https://<YOUR_SERVICE_URL>/execute?language=bash
 ```
 
 Replace `<YOUR_SERVICE_URL>` with the URL of your deployed Cloud Run service. The output of the script will be available in the Cloud Run logs.

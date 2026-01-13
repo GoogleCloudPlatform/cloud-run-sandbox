@@ -28,6 +28,7 @@ Creates a new sandbox instance.
 | `debugLabel`                      | `string`  | `''`    | A label to use for debug log messages.                                                                                                               |
 | `wsOptions`                       | `object`  |         | [ws client options](https://github.com/websockets/ws/blob/master/doc/ws.md#new-websocketaddress-protocols-options) to pass to the WebSocket client. |
 | `enableAutoReconnect`             | `boolean` | `false` | Enables automatic reconnection to the sandbox if the connection is lost.                                                                             |
+| `useGoogleAuth`                   | `boolean` | `false` | Automatically fetches an ID token from Application Default Credentials for authentication.                                                           |
 
 ### `Sandbox.attach(url, sandboxId, sandboxToken, options)`
 

@@ -30,6 +30,7 @@ Creates a new sandbox instance.
 | `debug_label`                         | `str`   | `''`    | A label to use for debug log messages.                                                                                                               |
 | `ssl`                                 | `SSLContext` | `None` | An `ssl.SSLContext` object for secure connections. It is recommended to use `ssl.create_default_context(cafile=certifi.where())`. |
 | `enable_auto_reconnect`               | `bool`  | `False` | Enables automatic reconnection to the sandbox if the connection is lost.                                                                             |
+| `use_google_auth`                     | `bool`  | `False` | Automatically fetches an ID token from Application Default Credentials for authentication.                                                           |
 
 ### `await Sandbox.attach(url, sandbox_id, sandbox_token, **options)`
 
