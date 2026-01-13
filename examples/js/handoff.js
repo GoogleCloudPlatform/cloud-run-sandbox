@@ -37,14 +37,13 @@
  * The WebSocket URLs should be in the format: wss://<your-cloud-run-url>
  *
  * To run this example:
- * 1. Make sure you have ts-node and uuid installed (`npm install -g ts-node && npm install uuid @types/uuid`).
- * 2. Set the environment variables:
+ * 1. Set the environment variables:
  *    `export CLOUD_RUN_URL="wss://your-service-a-url.run.app"
  *    `export CLOUD_RUN_URL_HANDOFF="wss://your-service-b-url.run.app"
- * 3. Run the script from the root of the repository:
- *    `npx ts-node example/js/handoff.ts`
+ * 2. Run the script from the root of the repository:
+ *    `node examples/js/handoff.js`
  */
-import { Sandbox } from '../../clients/js/src/sandbox';
+import { Sandbox } from '../../clients/js/src/sandbox.js';
 import { v4 as uuidv4 } from 'uuid';
 
 async function main() {
@@ -62,8 +61,8 @@ async function main() {
   console.log(`Using URL A: ${urlA}`);
   console.log(`Using URL B (Handoff): ${urlB}`);
 
-  let sandboxA: Sandbox | null = null;
-  let sandboxB: Sandbox | null = null;
+  let sandboxA = null;
+  let sandboxB = null;
 
   try {
     // 1. Create the first sandbox (Sandbox A) with handoff enabled
@@ -84,7 +83,7 @@ async function main() {
     }
 
     // Add a listener to see when Sandbox A's connection is closed
-    sandboxA['connection'].on('close', (code: number) => {
+    sandboxA.connection.on('close', (code) => {
       console.log(`[SandboxA] Connection closed with code: ${code}. This is expected during handoff.`);
     });
 
