@@ -16,9 +16,11 @@
 
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
-import { MessageKey, EventType, SandboxEvent, WebSocketMessage } from './types';
+import { MessageKey, EventType, SandboxEvent } from './types.js';
 
-type SendMessageCallback = (data: string) => void;
+/**
+ * @typedef {(data: string) => void} SendMessageCallback
+ */
 
 class SandboxStream extends Readable {
   // This is a push-based stream. Data is pushed into it from an external
@@ -29,9 +31,11 @@ class SandboxStream extends Readable {
 
   /**
    * Reads the entire stream until EOF and returns it as a single string.
+   * @returns {Promise<string>}
    */
-  public async readAll(): Promise<string> {
-    const chunks: Buffer[] = [];
+  async readAll() {
+    /** @type {Buffer[]} */
+    const chunks = [];
     for await (const chunk of this) {
       chunks.push(Buffer.from(chunk));
     }
@@ -40,54 +44,66 @@ class SandboxStream extends Readable {
 }
 
 export class SandboxProcess {
-  private send: SendMessageCallback;
-  private eventEmitter = new EventEmitter();
-  private _startError: Error | null = null;
-  private _isDone: boolean = false;
-  private _isKillIntentionally: boolean = false;
-  private _isKilling = false;
-
-  public readonly stdout: SandboxStream;
-  public readonly stderr: SandboxStream;
-
-  constructor(send: SendMessageCallback) {
+  /**
+   * @param {SendMessageCallback} send
+   */
+  constructor(send) {
     this.send = send;
+    this.eventEmitter = new EventEmitter();
+    this._startError = null;
+    this._isDone = false;
+    this._isKillIntentionally = false;
+    this._isKilling = false;
+
     this.stdout = new SandboxStream();
     this.stderr = new SandboxStream();
   }
 
-  public handleMessage(message: WebSocketMessage) {
+  /**
+   * @param {import('./types.js').WebSocketMessage} message
+   */
+  handleMessage(message) {
     if (this._isDone) {
       return; // Don't process any more messages after completion.
     }
 
     switch (message.event) {
       case EventType.STDOUT:
+        // @ts-ignore - We know this message has data
         this.stdout.push(message.data);
         break;
       
       case EventType.STDERR:
+        // @ts-ignore - We know this message has data
         this.stderr.push(message.data);
         break;
 
       case EventType.STATUS_UPDATE:
+        // @ts-ignore - We know this message has status
         if (message.status === SandboxEvent.SANDBOX_EXECUTION_RUNNING) {
           this.eventEmitter.emit('started');
+        // @ts-ignore - We know this message has status
         } else if (message.status === SandboxEvent.SANDBOX_EXECUTION_ERROR) {
+          // @ts-ignore - We know this message has message
           this._startError = new Error(message.message || 'Sandbox execution failed');
           this.eventEmitter.emit('started');
           this.close();
+        // @ts-ignore - We know this message has status
         } else if (message.status === SandboxEvent.SANDBOX_EXECUTION_UNSUPPORTED_LANGUAGE_ERROR) {
+          // @ts-ignore - We know this message has message
           this._startError = new Error(message.message || 'Unsupported language');
           this.eventEmitter.emit('started');
           this.close();
+        // @ts-ignore - We know this message has status
         } else if (message.status === SandboxEvent.SANDBOX_EXECUTION_DONE) {
           if (this._isKilling) {
             this.eventEmitter.emit('killed');
           }
           this.close();
         } else if (
+          // @ts-ignore - We know this message has status
           message.status === SandboxEvent.SANDBOX_EXECUTION_FORCE_KILLED ||
+          // @ts-ignore - We know this message has status
           message.status === SandboxEvent.SANDBOX_EXECUTION_FORCE_KILL_ERROR
         ) {
           if (this._isKillIntentionally) {
@@ -100,7 +116,12 @@ export class SandboxProcess {
     }
   }
 
-  public async exec(language: string, code: string): Promise<void> {
+  /**
+   * @param {string} language
+   * @param {string} code
+   * @returns {Promise<void>}
+   */
+  async exec(language, code) {
     return new Promise((resolve, reject) => {
       this.eventEmitter.once('started', () => {
         if (this._startError) {
@@ -117,7 +138,10 @@ export class SandboxProcess {
     });
   }
 
-  public async wait(): Promise<void> {
+  /**
+   * @returns {Promise<void>}
+   */
+  async wait() {
     if (this._isDone) {
       return Promise.resolve();
     }
@@ -129,7 +153,10 @@ export class SandboxProcess {
     });
   }
 
-  public writeToStdin(data: string): void {
+  /**
+   * @param {string} data
+   */
+  writeToStdin(data) {
     if (this._isDone) {
       throw new Error("Process has already completed.");
     }
@@ -139,12 +166,12 @@ export class SandboxProcess {
     }));
   }
 
-  private cleanup() {
+  cleanup() {
     this.stdout.push(null);
     this.stderr.push(null);
   }
 
-  public close(): void {
+  close() {
     if (!this._isDone) {
       this._isDone = true;
       this.cleanup();
@@ -152,7 +179,10 @@ export class SandboxProcess {
     }
   }
 
-  public kill(): Promise<void> {
+  /**
+   * @returns {Promise<void>}
+   */
+  kill() {
     if (this._isDone) {
       return Promise.resolve();
     }

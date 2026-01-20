@@ -19,18 +19,18 @@ import { EventEmitter } from 'events';
 
 /**
  * A callback function that determines whether the connection should attempt to reconnect.
- * @param code The WebSocket closing status code.
- * @param reason A Buffer containing the reason for closing.
- * @returns `true` if a reconnection should be attempted, `false` otherwise.
+ * @typedef {(code: number, reason: Buffer) => boolean} ShouldReconnectCallback
  */
-export type ShouldReconnectCallback = (code: number, reason: Buffer) => boolean;
 
-export type ReconnectInfo = {
-  url: string;
-  wsOptions?: WebSocket.ClientOptions;
-};
+/**
+ * @typedef {Object} ReconnectInfo
+ * @property {string} url
+ * @property {WebSocket.ClientOptions} [wsOptions]
+ */
 
-export type GetReconnectInfoCallback = () => ReconnectInfo;
+/**
+ * @typedef {() => ReconnectInfo} GetReconnectInfoCallback
+ */
 
 /**
  * A WebSocket connection wrapper that provides automatic reconnection capabilities.
@@ -38,38 +38,24 @@ export type GetReconnectInfoCallback = () => ReconnectInfo;
  * when it's about to attempt a reconnection.
  */
 export class Connection extends EventEmitter {
-  private ws: WebSocket | null = null;
-  private url: string;
-  private wsOptions?: WebSocket.ClientOptions;
-  private shouldReconnect: ShouldReconnectCallback;
-  private getReconnectInfo: GetReconnectInfoCallback;
-  private isReconnecting: boolean = false;
-  private cookie: string | null = null;
-  private _debugEnabled: boolean = false;
-  private _debugLabel: string = '';
-  private tokenProvider?: () => Promise<string>;
-
-  /**
-   * A flag to indicate if the connection was closed intentionally by the user calling `close()`.
-   * If `true`, no reconnection attempts will be made.
-   */
-  private isClosedIntentionally: boolean = false;
-
   /**
    * Creates an instance of the Connection class.
-   * @param url The URL to connect to.
-   * @param shouldReconnect A callback that is invoked when the connection closes to determine if a reconnect should be attempted.
-   * @param getReconnectInfo A callback that returns the URL and options for reconnection.
-   * @param wsOptions Optional client options for the underlying `ws` WebSocket instance.
+   * @param {string} url The URL to connect to.
+   * @param {ShouldReconnectCallback} shouldReconnect A callback that is invoked when the connection closes to determine if a reconnect should be attempted.
+   * @param {GetReconnectInfoCallback} getReconnectInfo A callback that returns the URL and options for reconnection.
+   * @param {WebSocket.ClientOptions} [wsOptions] Optional client options for the underlying `ws` WebSocket instance.
+   * @param {boolean} [debug]
+   * @param {string} [debugLabel]
+   * @param {() => Promise<string>} [tokenProvider]
    */
   constructor(
-    url: string,
-    shouldReconnect: ShouldReconnectCallback,
-    getReconnectInfo: GetReconnectInfoCallback,
-    wsOptions?: WebSocket.ClientOptions,
-    debug: boolean = false,
-    debugLabel: string = '',
-    tokenProvider?: () => Promise<string>,
+    url,
+    shouldReconnect,
+    getReconnectInfo,
+    wsOptions,
+    debug = false,
+    debugLabel = '',
+    tokenProvider,
   ) {
     super();
     this.url = url;
@@ -79,6 +65,19 @@ export class Connection extends EventEmitter {
     this._debugEnabled = debug;
     this._debugLabel = debugLabel;
     this.tokenProvider = tokenProvider;
+
+    /** @type {WebSocket | null} */
+    this.ws = null;
+    this.isReconnecting = false;
+    /** @type {string | null} */
+    this.cookie = null;
+    
+    /**
+     * A flag to indicate if the connection was closed intentionally by the user calling `close()`.
+     * If `true`, no reconnection attempts will be made.
+     */
+    this.isClosedIntentionally = false;
+    
     this.connect();
   }
 
@@ -86,10 +85,11 @@ export class Connection extends EventEmitter {
    * Establishes the WebSocket connection and sets up event listeners.
    * This method is called initially and for every reconnection attempt.
    */
-  private async connect() {
-    let headers: Record<string, string> | undefined = this.wsOptions?.headers as any;
+  async connect() {
+    /** @type {Record<string, string> | undefined} */
+    let headers = this.wsOptions?.headers;
     
-    let token: string | undefined;
+    let token;
     if (this.tokenProvider) {
       try {
         token = await this.tokenProvider();
@@ -193,9 +193,9 @@ export class Connection extends EventEmitter {
 
   /**
    * Sends data over the WebSocket connection.
-   * @param data The data to send.
+   * @param {string | Buffer | ArrayBuffer | Buffer[]} data The data to send.
    */
-  public send(data: string | Buffer | ArrayBuffer | Buffer[]) {
+  send(data) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(data);
     } else {
@@ -206,10 +206,10 @@ export class Connection extends EventEmitter {
   /**
    * Closes the WebSocket connection intentionally.
    * Once this is called, no reconnection attempts will be made.
-   * @param code The status code for closing.
-   * @param reason The reason for closing.
+   * @param {number} [code] The status code for closing.
+   * @param {string} [reason] The reason for closing.
    */
-  public close(code?: number, reason?: string) {
+  close(code, reason) {
     this.isClosedIntentionally = true;
     if (this.ws) {
       this.ws.close(code, reason);

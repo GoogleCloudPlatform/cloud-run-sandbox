@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-module.exports = {
-  preset: 'ts-jest',
+export default {
   testEnvironment: 'node',
-  testMatch: ['**/tests/**/*.test.ts'],
+  transform: {},
+  testMatch: ['**/tests/**/*.test.js'],
 };

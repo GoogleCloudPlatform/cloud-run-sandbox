@@ -33,13 +33,12 @@
  * maintaining the sandbox session. You can observe the cookie being received and used in the debug logs.
  *
  * To run this example:
- * 1. Make sure you have ts-node installed (`npm install -g ts-node`).
- * 2. Set the environment variable for your Cloud Run service URL:
+ * 1. Set the environment variable for your Cloud Run service URL:
  *    `export CLOUD_RUN_URL="wss://your-service-url.run.app"
- * 3. Run the script from the root of the repository:
- *    `npx ts-node example/reconnect.ts`
+ * 2. Run the script from the root of the repository:
+ *    `node examples/js/reconnect.js`
  */
-import { Sandbox } from '../../clients/js/src/sandbox';
+import { Sandbox } from '../../clients/js/src/sandbox.js';
 
 async function main() {
   const url = process.env.CLOUD_RUN_URL;
@@ -50,7 +49,7 @@ async function main() {
   }
 
   console.log(`Connecting to sandbox at ${url}...`);
-  let sandbox: Sandbox | undefined;
+  let sandbox;
 
   try {
     // Create a new sandbox session with debug logging and auto-reconnect enabled.

@@ -1,0 +1,9 @@
+{
+  "name": "cloud-run-sandbox-examples",
+  "version": "1.0.0",
+  "description": "Examples for Cloud Run Sandbox JS client",
+  "type": "module",
+  "dependencies": {
+    "uuid": "^13.0.0"
+  }
+}

@@ -14,20 +14,16 @@
  * limitations under the License.
  */
 
-import { Sandbox } from '../src/sandbox';
-import { Connection } from '../src/connection';
-import { EventEmitter } from 'events';
 import { jest } from '@jest/globals';
-import { MessageKey, EventType, SandboxEvent } from '../src/types';
-import { GoogleAuth } from 'google-auth-library';
 
 // Mock the Connection class
-jest.mock('../src/connection');
+jest.unstable_mockModule('../src/connection.js', () => ({
+  Connection: jest.fn(),
+}));
 
 // Mock google-auth-library
-jest.mock('google-auth-library', () => {
-  return {
-    GoogleAuth: jest.fn().mockImplementation(() => {
+jest.unstable_mockModule('google-auth-library', () => ({
+  GoogleAuth: jest.fn().mockImplementation(() => {
       return {
         getIdTokenClient: jest.fn().mockImplementation(() => {
           return Promise.resolve({
@@ -38,27 +34,33 @@ jest.mock('google-auth-library', () => {
             })
           });
         })
-      } as any;
+      };
     })
-  };
-});
+}));
 
-const MockConnection = Connection as jest.MockedClass<typeof Connection>;
+const { Sandbox } = await import('../src/sandbox.js');
+const { Connection } = await import('../src/connection.js');
+const { GoogleAuth } = await import('google-auth-library');
+import { EventEmitter } from 'events';
+import { MessageKey, EventType, SandboxEvent } from '../src/types.js';
+
+const MockConnection = Connection;
 
 describe('Sandbox', () => {
-  let mockConnectionInstance: EventEmitter & { send: jest.Mock; close: jest.Mock; };
+  let mockConnectionInstance;
 
   beforeEach(() => {
     // Create a fresh mock instance for each test
-    mockConnectionInstance = new EventEmitter() as any;
+    mockConnectionInstance = new EventEmitter();
     mockConnectionInstance.send = jest.fn();
     mockConnectionInstance.close = jest.fn();
 
     // Make the constructor return our mock instance
-    MockConnection.mockImplementation(() => mockConnectionInstance as any);
-    MockConnection.mockClear();
-    (GoogleAuth as unknown as jest.Mock).mockClear();
+    Connection.mockImplementation(() => mockConnectionInstance);
+    Connection.mockClear();
+    GoogleAuth.mockClear();
   });
+// ... rest of the file
 
   it('should create and kill a sandbox successfully', async () => {
     const createPromise = Sandbox.create('ws://test-url');
@@ -342,16 +344,16 @@ describe('Sandbox', () => {
     const sandbox = await createPromise;
 
     // Simulate an error that transitions to failed (e.g. during a state where we care)
-    (sandbox as any).state = 'restoring';
+    sandbox.state = 'restoring';
     const error = new Error('Restore failed');
     mockConnectionInstance.emit('error', error);
-    expect((sandbox as any).state).toBe('failed');
+    expect(sandbox.state).toBe('failed');
 
     // Simulate subsequent close
     mockConnectionInstance.emit('close');
     
     // State should STILL be failed, not closed
-    expect((sandbox as any).state).toBe('failed');
+    expect(sandbox.state).toBe('failed');
   });
 
   it('should run a process, wait for output, and run another process', async () => {
@@ -375,7 +377,7 @@ describe('Sandbox', () => {
     }));
     const process1 = await process1Promise;
 
-    const stdoutPromise1 = new Promise<string>(resolve => {
+    const stdoutPromise1 = new Promise((resolve) => {
       process1.stdout.on('data', (data) => resolve(data.toString()));
     });
 
@@ -400,7 +402,7 @@ describe('Sandbox', () => {
     }));
     const process2 = await process2Promise;
 
-    const stdoutPromise2 = new Promise<string>(resolve => {
+    const stdoutPromise2 = new Promise((resolve) => {
       process2.stdout.on('data', (data) => resolve(data.toString()));
     });
 
@@ -531,7 +533,7 @@ describe('Sandbox', () => {
     await expect(checkpointPromise).rejects.toThrow('Execution in progress');
 
     // Verify that the sandbox state has returned to running
-    expect((sandbox as any).state).toBe('running');
+    expect(sandbox.state).toBe('running');
   });
   it('should correctly set the sandboxId when attaching', async () => {
     const testId = 'my-attach-test-id';
@@ -618,7 +620,7 @@ describe('Sandbox', () => {
       const sandbox = await createPromise;
 
       // After running, should be true
-      expect((sandbox as any)._shouldReconnect).toBe(true);
+      expect(sandbox._shouldReconnect).toBe(true);
     });
 
     it('should change state to reconnecting on connection close', async () => {
@@ -637,7 +639,7 @@ describe('Sandbox', () => {
       const decision = sandbox.shouldReconnect(1006, Buffer.from('Abnormal closure'));
 
       expect(decision).toBe(true);
-      expect((sandbox as any).state).toBe('reconnecting');
+      expect(sandbox.state).toBe('reconnecting');
     });
 
     it('should provide correct reconnect info', async () => {
@@ -683,7 +685,7 @@ describe('Sandbox', () => {
 
       // Trigger reconnection
       sandbox.shouldReconnect(1006, Buffer.from('Abnormal closure'));
-      expect((sandbox as any).state).toBe('reconnecting');
+      expect(sandbox.state).toBe('reconnecting');
 
       // Send stdin while reconnecting
       process.writeToStdin('buffered message');
@@ -747,7 +749,7 @@ describe('Sandbox', () => {
       const sandbox = await createPromise;
 
       // Ensure reconnect is initially true
-      expect((sandbox as any)._shouldReconnect).toBe(true);
+      expect(sandbox._shouldReconnect).toBe(true);
 
       // Simulate a fatal error
       mockConnectionInstance.emit('message', JSON.stringify({
@@ -783,7 +785,7 @@ describe('Sandbox', () => {
     const process = await processPromise;
     
     // Verify process is active
-    expect((sandbox as any).activeProcess).not.toBeNull();
+    expect(sandbox.activeProcess).not.toBeNull();
 
     const waitPromise = process.wait();
 
@@ -797,7 +799,7 @@ describe('Sandbox', () => {
     await expect(waitPromise).resolves.toBeUndefined();
     
     // Assert that the sandbox has no active process
-    expect((sandbox as any).activeProcess).toBeNull();
+    expect(sandbox.activeProcess).toBeNull();
   });
 
   describe('kill', () => {
@@ -879,7 +881,7 @@ describe('Sandbox', () => {
         [MessageKey.STATUS]: SandboxEvent.SANDBOX_RUNNING,
       }));
       const sandbox = await createPromise;
-      (sandbox as any).state = state;
+      sandbox.state = state;
 
       // Clear the mock so we can check that send is not called by kill()
       mockConnectionInstance.send.mockClear();
@@ -894,23 +896,23 @@ describe('Sandbox', () => {
 
   describe('appendErrorHint', () => {
     it('should append auth hint for 401/403 errors', () => {
-      const msg401 = (Sandbox as any).appendErrorHint('HTTP 401');
+      const msg401 = Sandbox.appendErrorHint('HTTP 401');
       expect(msg401).toContain('Permission denied or missing authentication');
-      expect(msg401).toContain((Sandbox as any).HINT_AUTH_PERMISSION);
+      expect(msg401).toContain(Sandbox.HINT_AUTH_PERMISSION);
 
-      const msg403 = (Sandbox as any).appendErrorHint(new Error('HTTP 403 Forbidden'));
+      const msg403 = Sandbox.appendErrorHint(new Error('HTTP 403 Forbidden'));
       expect(msg403).toContain('Permission denied or missing authentication');
-      expect(msg403).toContain((Sandbox as any).HINT_AUTH_PERMISSION);
+      expect(msg403).toContain(Sandbox.HINT_AUTH_PERMISSION);
     });
 
     it('should append troubleshooting link for HTTP errors', () => {
-      const msg500 = (Sandbox as any).appendErrorHint('HTTP 500');
+      const msg500 = Sandbox.appendErrorHint('HTTP 500');
       expect(msg500).toContain('https://docs.cloud.google.com/run/docs/troubleshooting');
-      expect(msg500).toContain((Sandbox as any).TROUBLESHOOTING_URL);
+      expect(msg500).toContain(Sandbox.TROUBLESHOOTING_URL);
     });
 
     it('should not append hints for non-HTTP errors', () => {
-      const msg = (Sandbox as any).appendErrorHint('Some other error');
+      const msg = Sandbox.appendErrorHint('Some other error');
       expect(msg).toBe('Some other error');
     });
   });
@@ -932,7 +934,7 @@ describe('Sandbox', () => {
     );
 
     // Verify the tokenProvider calls getIdToken
-    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+    const tokenProvider = MockConnection.mock.calls[0][6];
     await tokenProvider();
     expect(GoogleAuth).toHaveBeenCalled();
   });
@@ -942,27 +944,27 @@ describe('Sandbox', () => {
     const createPromise = Sandbox.create('wss://my-service-xyz.run.app/subpath', { useGoogleAuth: true });
     
     // Trigger the token provider
-    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+    const tokenProvider = MockConnection.mock.calls[0][6];
     await tokenProvider();
 
     // Verify audience is the HTTPS origin
-    const mockAuthInstance = (GoogleAuth as unknown as jest.Mock).mock.results[0].value as any;
+    const mockAuthInstance = GoogleAuth.mock.results[0].value;
     expect(mockAuthInstance.getIdTokenClient).toHaveBeenCalledWith('https://my-service-xyz.run.app');
   });
 
   it('should fetch a fresh token on every connection attempt', async () => {
     let callCount = 0;
     // Override the mock for this test
-    (GoogleAuth as unknown as jest.Mock).mockImplementation(() => ({
-      getIdTokenClient: jest.fn<any>().mockResolvedValue({
-        getRequestHeaders: jest.fn<any>().mockResolvedValue({
+    GoogleAuth.mockImplementation(() => ({
+      getIdTokenClient: jest.fn().mockResolvedValue({
+        getRequestHeaders: jest.fn().mockResolvedValue({
           Authorization: `Bearer token-${++callCount}`
         })
       })
     }));
 
     const createPromise = Sandbox.create('ws://test-url', { useGoogleAuth: true });
-    const tokenProvider = (MockConnection as unknown as jest.Mock).mock.calls[0][6] as () => Promise<string>;
+    const tokenProvider = MockConnection.mock.calls[0][6];
 
     const token1 = await tokenProvider();
     const token2 = await tokenProvider();
@@ -985,10 +987,10 @@ describe('Sandbox', () => {
     const sandbox = await createPromise;
 
     // Force state to reconnecting
-    (sandbox as any).state = 'reconnecting';
+    sandbox.state = 'reconnecting';
     
-    const failedPromise = new Promise<void>((resolve) => {
-      (sandbox as any).eventEmitter.on('failed', (err: Error) => {
+    const failedPromise = new Promise((resolve) => {
+      sandbox.eventEmitter.on('failed', (err) => {
         expect(err.message).toContain('Token fetch failed');
         resolve();
       });
@@ -1000,6 +1002,6 @@ describe('Sandbox', () => {
 
     await failedPromise;
     
-    expect((sandbox as any).state).toBe('failed');
+    expect(sandbox.state).toBe('failed');
   });
 });
