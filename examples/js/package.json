@@ -4,6 +4,6 @@
   "description": "Examples for Cloud Run Sandbox JS client",
   "type": "module",
   "dependencies": {
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   }
 }
