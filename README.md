@@ -1,6 +1,9 @@
-# Cloud Run Sandbox
+# *Experimental* code sample for sandbox on top of Cloud Run
 
-This project provides a web server for executing arbitrary code (such as Python and Bash) in a secure sandboxed environment on Google Cloud Run. It leverages gVisor (`runsc`) for strong isolation and supports advanced features like stateful sessions through memory checkpoint/restore and efficient environment duplication via filesystem snapshots.
+> [!IMPORTANT]
+> This is an experimental code sample, not an officially supported Cloud Run feature and is different from "Cloud Run sandboxes"
+
+This exprrimental repository provides a web server for executing arbitrary code (such as Python and Bash) in a secure sandboxed environment on Google Cloud Run. It leverages gVisor (`runsc`) for strong isolation and supports advanced features like stateful sessions through memory checkpoint/restore and efficient environment duplication via filesystem snapshots.
 
 ## 1. Deployment
 
@@ -224,12 +227,3 @@ curl -s -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" -
 
 Replace `<YOUR_SERVICE_URL>` with the URL of your deployed Cloud Run service. The output of the script will be available in the Cloud Run logs.
 
-## 6. Limitation
-
-Currently, the sandbox environment does not support importing non-standard Python libraries.
-
-A simple way is workaround is to update the Dockerfile to install the libraries needed.
-
-**TODO:** Add support for installing and using third-party libraries.
-
-The Google Cloud Platform Terms of Service (available at https://cloud.google.com/terms/) and the Data Processing and Security Terms (available at https://cloud.google.com/terms/data-processing-terms) do not apply to any component of the Cloud Run Sandbox software.
